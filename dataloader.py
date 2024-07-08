@@ -1,33 +1,25 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jun 26 10:36:19 2024
-
-@author: wv00017
-"""
-
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py, json, logging, os
 import torch
 
 
-def load_sim(path : str, args='all') -> list:
+def load_sim(path : str, args='all', verbose=False) -> list:
     data = {}
     with h5py.File(os.path.join(path, 'data.h5'), 'r') as f:
         images = list(f.keys())
         if args == 'all':
             args = f[images[0]].keys()
-        
         for image in images:
             data[image] = {}
             for arg in args:
                 if arg not in data[image].keys():
                     logging.info(f'arg {arg} not found in {image}')
                     pass
-                # include 90 deg clockwise rotation
+                # include 90 deg anticlockwise rotation
                 if arg != 'sensor_data':
                     data[image][arg] = np.rot90(
-                        np.array(f[image].get(arg)), k=-1, axes=(-2,-1)
+                        np.array(f[image][arg][()]), k=1, axes=(-2,-1)
                     ).copy()
                 else:
                     data[image][arg] = np.array(f[image].get(arg)).copy()
@@ -140,11 +132,21 @@ def heatmap(img,
 
 if __name__ == '__main__':
     # script to load and visualise a dataset
-    path = '\\\\wsl$\\Ubuntu-22.04\\home\\wv00017\\python_BphP_MSOT_sim\\unnamed_sim'
+    #path = '\\\\wsl$\\Ubuntu-22.04\\home\\wv00017\\python_BphP_MSOT_sim\\unnamed_sim'
+    #path= 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction\\20240627_ImageNet_phantom.c173657.p0'
+    #path = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\20240702_digimouse_phantom.c174079.p0'
+    path = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\20240702_digimouse_phantom.c174176.p1'
+    
     [data, cfg] = load_sim(path)
     groups = list(data.keys())
-    labels = [r'$\mu_{a}', r'$\mu_{s}$', r'$\Phi$', r'$p_{0}$ time reversal']
+    labels = [r'$\mu_{a}$ (m$^{-1}$)', r'$\mu_{s}$ (m$^{-1}$)',
+              r'$\Phi$ (J m$^{-2}$)', r'$p_{0}$ initial pressure (Pa)',
+              r'$\hat{p}_{0}$ time reversal (Pa)', r'$\mid{\hat{p}_{0}-p_{0}}\mid$ (Pa)',
+              r'$\hat{p}_{0}/\Phi$ (m$^{-1}$)', r'$\mid{\mu_{a}-p_{0}/\Phi}\mid$ (m$^{-1}$)']
     for i in range(min(4, len(groups))):
         images = [data[groups[i]]['mu_a'], data[groups[i]]['mu_s'], 
-                  data[groups[i]]['Phi'], data[groups[i]]['p0_tr']]
-    heatmap(images, dx=cfg['dx'], rowmax=2, labels=labels)
+                  data[groups[i]]['Phi'], data[groups[i]]['mu_a']*data[groups[i]]['Phi'],
+                  data[groups[i]]['no_noise_unfiltered_p0_tr'], np.abs((data[groups[i]]['mu_a']*data[groups[i]]['Phi'])-data[groups[i]]['no_noise_unfiltered_p0_tr']),
+                  data[groups[i]]['no_noise_unfiltered_p0_tr']/(data[groups[i]]['Phi']+1e-8),
+                  np.abs(data[groups[i]]['mu_a']-(data[groups[i]]['no_noise_unfiltered_p0_tr']/(data[groups[i]]['Phi']+1e-8)))]
+        heatmap(images, dx=cfg['dx'], rowmax=4, labels=labels)
