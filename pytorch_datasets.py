@@ -1,38 +1,41 @@
 import numpy as np
-import torch, h5py, json, os, logging, glob
+import torch, h5py, json, os
 from torch.utils.data import Dataset
-import matplotlib.pyplot as plt
+
 
 class FluenceCorrectionDataset(Dataset):
     
-    def __init__(self, path, transform=None):
-        h5_dirs = glob.glob(os.path.join(path, '**/*.h5'), recursive=True)
-        json_dirs = glob.glob(os.path.join(path, '**/*.json'), recursive=True)
+    def __init__(self, path, gt_type='fluence_correction', X_transform=None, Y_transform=None):
+        self.path = path
+        self.X_transform = X_transform
+        self.Y_transform = Y_transform
         
-        h5_dirs = {os.path.dirname(file) for file in h5_dirs}
-        json_dirs = {os.path.dirname(file) for file in json_dirs}
+        with os.path.join(path, 'config.json') as f:
+            self.cfg = json.load(f)
         
-        sim_dirs = h5_dirs.intersection(json_dirs)
+        if gt_type == 'fluence_correction':
+            self.gt_type = 'fluence_correction'
+            self.get_Y = lambda f, sample: torch.from_numpy(f[sample]['Y'][()])
+        elif gt_type == 'mu_a':
+            self.gt_type = 'mu_a'
+            self.get_Y = lambda f, sample: torch.from_numpy(f[sample]['mu_a'][()])
         
-        self.samples = []
-        for dir in sim_dirs:
-            with h5py.File(os.path.join(dir, 'data.h5'), 'r') as f:
-                for key in list(f.keys()):
-                    self.samples.append((dir, key))
-                            
-        self.transform = transform
+        with h5py.File(os.path.join(self.path, 'data.h5'), 'r') as f:
+            self.samples = list(f.keys())
         
     def __len__(self):
         return len(self.samples)
     
     def __getitem__(self, idx):
-        with h5py.File(os.path.join(self.samples[idx][0], 'data.h5'), 'r') as f:
-            X = np.array(f[self.samples[idx[1]]].get('p0_tr'))
-            Y = np.array(f[self.samples[idx[1]]].get('Phi'))
+        with h5py.File(os.path.join(self.path, 'data.h5'), 'r') as f:
+            X = torch.from_numpy(f[self.samples[idx]]['X'][()])
+            Y = self.get_Y(f, self.samples[idx])
             
-        if self.transform:
-            X = self.transform(X)
-            Y = self.transform(Y)
+        if self.X_transform:
+            X = self.X_transform(X)
+        
+        if self.Y_transform:
+            Y = self.Y_transform(Y)
             
         return X, Y
             
