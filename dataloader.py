@@ -2,27 +2,30 @@ import numpy as np
 import matplotlib.pyplot as plt
 import h5py, json, logging, os
 import torch
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def load_sim(path : str, args='all', verbose=False) -> list:
     data = {}
     with h5py.File(os.path.join(path, 'data.h5'), 'r') as f:
         images = list(f.keys())
+        if verbose:
+            print(f'images found {images}')
         if args == 'all':
             args = f[images[0]].keys()
+            print(f'args found in images[0] {args}')
         for image in images:
             data[image] = {}
             for arg in args:
-                if arg not in data[image].keys():
-                    logging.info(f'arg {arg} not found in {image}')
+                if arg not in f[image].keys():
+                    print(f'arg {arg} not found in {image}')
                     pass
                 # include 90 deg anticlockwise rotation
-                if arg != 'sensor_data':
+                elif arg != 'sensor_data':
                     data[image][arg] = np.rot90(
                         np.array(f[image][arg][()]), k=1, axes=(-2,-1)
                     ).copy()
                 else:
-                    data[image][arg] = np.array(f[image].get(arg)).copy()
+                    data[image][arg] = np.array(f[image][arg][()])
             
     with open(path+'/config.json', 'r') as f:
         cfg = json.load(f)
@@ -76,6 +79,9 @@ def heatmap(img,
             extent=extent,
             origin='lower'
         ))
+        divider = make_axes_locatable(ax[0])
+        cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
+        cbar = fig.colorbar(frames[0], cax=cbar_ax, orientation='vertical')    
         
     else: # multiple pulses
         nframes = shape[0]
@@ -110,7 +116,10 @@ def heatmap(img,
             elif nframes > 1:
                 ax[frame].set(title='pulse '+str(frame))
             if not sharescale:
-                cbar = plt.colorbar(frames[frame], ax=ax[frame])
+                divider = make_axes_locatable(ax[frame])
+                cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
+                cbar = fig.colorbar(frames[frame], cax=cbar_ax, orientation='vertical')
+                #cbar = plt.colorbar(frames[frame], ax=ax[frame])
                 if cbar_label:
                     cbar.set_label=cbar_label
 
@@ -132,21 +141,23 @@ def heatmap(img,
 
 if __name__ == '__main__':
     # script to load and visualise a dataset
-    #path = '\\\\wsl$\\Ubuntu-22.04\\home\\wv00017\\python_BphP_MSOT_sim\\unnamed_sim'
-    #path= 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction\\20240627_ImageNet_phantom.c173657.p0'
-    #path = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\20240702_digimouse_phantom.c174079.p0'
-    path = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\20240702_digimouse_phantom.c174176.p1'
+    #path = '\\\\wsl$\\Ubuntu-22.04\\home\\wv00017\\python_BphP_MSOT_sim\\test_runs\\unnamed_sim'
+    path= 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse\\20240906_digimouse_phantom.c187370.p0'
     
-    [data, cfg] = load_sim(path)
+    logging.basicConfig(level=logging.INFO)
+    
+    [data, cfg] = load_sim(path, verbose=True)
     groups = list(data.keys())
     labels = [r'$\mu_{a}$ (m$^{-1}$)', r'$\mu_{s}$ (m$^{-1}$)',
               r'$\Phi$ (J m$^{-2}$)', r'$p_{0}$ initial pressure (Pa)',
               r'$\hat{p}_{0}$ time reversal (Pa)', r'$\mid{\hat{p}_{0}-p_{0}}\mid$ (Pa)',
-              r'$\hat{p}_{0}/\Phi$ (m$^{-1}$)', r'$\mid{\mu_{a}-p_{0}/\Phi}\mid$ (m$^{-1}$)']
-    for i in range(min(4, len(groups))):
+              r'$\hat{p}_{0}/\Phi$ (m$^{-1}$)', r'$\mid{\mu_{a}-\hat{p}_{0}/\Phi}\mid$ (m$^{-1}$)']
+    for i in range(min(len(groups), len(groups))):
+        #images = [data[groups[i]]['mu_a'], data[groups[i]]['mu_s']]
+        print(groups[i])
         images = [data[groups[i]]['mu_a'], data[groups[i]]['mu_s'], 
                   data[groups[i]]['Phi'], data[groups[i]]['mu_a']*data[groups[i]]['Phi'],
-                  data[groups[i]]['no_noise_unfiltered_p0_tr'], np.abs((data[groups[i]]['mu_a']*data[groups[i]]['Phi'])-data[groups[i]]['no_noise_unfiltered_p0_tr']),
-                  data[groups[i]]['no_noise_unfiltered_p0_tr']/(data[groups[i]]['Phi']+1e-8),
-                  np.abs(data[groups[i]]['mu_a']-(data[groups[i]]['no_noise_unfiltered_p0_tr']/(data[groups[i]]['Phi']+1e-8)))]
+                  data[groups[i]]['p0_tr'], np.abs((data[groups[i]]['mu_a']*data[groups[i]]['Phi'])-data[groups[i]]['p0_tr']),
+                  data[groups[i]]['p0_tr']/(data[groups[i]]['Phi']+1e-8),
+                  np.abs(data[groups[i]]['mu_a']-(data[groups[i]]['p0_tr']/(data[groups[i]]['Phi']+1e-8)))]
         heatmap(images, dx=cfg['dx'], rowmax=4, labels=labels)

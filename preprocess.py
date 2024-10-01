@@ -84,7 +84,7 @@ if __name__ == '__main__':
             # fluence (Phi) is clamped at 1e-8 to avoid division by zero
             Phi = data[image]['Phi']
             Phi[Phi < 1e-8] = 1e-8
-            Y = X / Phi
+            Y = X / (Phi + 1e-8)
             # absorption coefficient may also be used as a target instead of 
             # the fluence corrected image
             mu_a = data[image]['mu_a']
