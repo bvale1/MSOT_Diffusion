@@ -8,16 +8,15 @@ from typing import Optional
 
 class UnetLightning(pl.LightningModule): 
     
-    def __init__(
-            self,
-            net : nn.Module, # model architecture
-            y_transform : nn.Module, # required to rescale the output to the ground truth
-            y_mean : float, # mean of the ground truth
-            wandb_log : Optional[wandb.sdk.wandb_run.Run] = None, # wandb logger
-            git_hash : Optional[str] = None, # git hash of the current commit
-            lr : Optional[float] = 1e-3, # learning rate
-            seed : int = None # seed for reproducibility
-        ):
+    def __init__(self,
+                 net : nn.Module, # model architecture
+                 y_transform : nn.Module, # required to rescale the output to the ground truth
+                 y_mean : float, # mean of the ground truth
+                 wandb_log : Optional[wandb.sdk.wandb_run.Run] = None, # wandb logger
+                 git_hash : Optional[str] = None, # git hash of the current commit
+                 lr : Optional[float] = 1e-3, # learning rate
+                 seed : int = None # seed for reproducibility
+                 ):
         
         super().__init__()
         self.net = net
@@ -30,6 +29,7 @@ class UnetLightning(pl.LightningModule):
             ('EVS', self.EVS),
             ('MSE', self.MSE)
         ]
+        self.outputs = []
         
         self.y_transform = y_transform
         self.wandb_log = wandb_log
@@ -74,6 +74,7 @@ class UnetLightning(pl.LightningModule):
         y_hat = y_hat.contiguous().view(-1)  # <- regression metrics require 1D tensors
         y = y.contiguous().view(-1)
         
+        self.log('val_loss', loss)
         metrics_eval = {'val_loss' : loss}
         for metric_name, metric in self.metrics:
             metrics_eval[f'val_{metric_name}'] = metric(y_hat, y)
@@ -109,18 +110,18 @@ class UnetLightning(pl.LightningModule):
         # accumulate confusion matrix over batches
         self.SSres += torch.sum((y - y_hat)**2)
         self.SStot += torch.sum((y - self.y_mean)**2)
-        return metrics_eval
+        self.outputs.append(metrics_eval)
+        return loss
     
     
-    def test_epoch_end(self, outputs):
-        
+    def on_test_epoch_end(self):
         # manually accumulate coefficient of determination over batches
         R2Score = 1 - (self.SSres / self.SStot)
         aggregate_metrics = {'test_R2Score' : R2Score}
         self.SSres, self.SStot = 0.0, 0.0
         for metric_name, _ in self.metrics:
             aggregate_metrics[f'average_test_{metric_name}'] = torch.stack(
-                [x[f'test_{metric_name}'] for x in outputs]
+                [x[f'test_{metric_name}'] for x in self.outputs]
             ).mean()
         print(f'average_test_metrics: {aggregate_metrics}')
         if self.wandb_log:
@@ -129,15 +130,6 @@ class UnetLightning(pl.LightningModule):
             self.logger.experiment.log({'seed': self.seed})
         
     
-    
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)   
     
-    
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = argparse.ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--in_channels', type=int, default=32)
-        parser.add_argument('--out_channels', type=int, default=2)
-        parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-        return parser

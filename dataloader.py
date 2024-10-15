@@ -12,7 +12,8 @@ def load_sim(path : str, args='all', verbose=False) -> list:
             print(f'images found {images}')
         if args == 'all':
             args = f[images[0]].keys()
-            print(f'args found in images[0] {args}')
+            if verbose:
+                print(f'args found in images[0] {args}')
         for image in images:
             data[image] = {}
             for arg in args:
