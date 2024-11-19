@@ -29,6 +29,7 @@ MANIFEST
 # weights and biases checkpoints
 wandb/
 mu_a_reconstruction/
+*checkpoints/
 
 # Dataset from preprocess.py 
 *Dataset/

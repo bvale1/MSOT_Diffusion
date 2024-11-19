@@ -1,10 +1,5 @@
-import torch, wandb
 import torch.nn as nn
-import torch.nn.functional as F
-import pytorch_lightning as pl
-from typing import Optional
 
-from pytorch_utils import KlDivergenceStandaredNormal
 
 class ResidualBlock(nn.Module):
     def __init__(self, channels : int, 
@@ -63,7 +58,7 @@ class Encoder(nn.Module):
     def __init__(self,
                  input_size : tuple=(256, 256),
                  input_channels : int=1,
-                 hidden_channels : list=[32, 64, 128, 256, 512, 1024],
+                 hidden_channels : list=[32, 64, 128, 256, 512, 512],
                  latent_dim : int=1024,
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -119,7 +114,7 @@ class UpsampleBlock(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self,
-                 hidden_channels : list=[1024, 512, 256, 128, 64, 32],
+                 hidden_channels : list=[512, 512, 256, 128, 64, 32],
                  output_channels : int=1,
                  output_size : tuple=(256, 256),
                  latent_dim : int=1024,
@@ -164,153 +159,3 @@ class Decoder(nn.Module):
         for i in range(len(self.hidden_channels)-1):
             x = getattr(self, f'upsampleblock{i+1}')(x)
         return self.outconv(x)
-    
-
-class LightningVAE(pl.LightningModule):
-    def __init__(self,
-                 encoder : nn.Module,
-                 decoder : nn.Module,
-                 kl_weight : float=1.0,
-                 wandb_log : Optional[wandb.sdk.wandb_run.Run] = None, # wandb logger
-                 git_hash : Optional[str] = None, # git hash of the current commit
-                 lr : Optional[float] = 1e-3, # learning rate
-                 seed : int = None # seed for reproducibility
-                 ) -> None:
-        super().__init__()
-        
-        self.encoder = encoder
-        self.decoder = decoder
-        self.kl_weight = kl_weight
-        
-        self.wandb_log = wandb_log
-        self.git_hash = git_hash
-        self.lr = lr
-        self.seed = seed
-        self.mse_loss = nn.MSELoss(reduction='mean')
-        self.kl_loss = KlDivergenceStandaredNormal()
-        self.save_hyperparameters(ignore=['encoder', 'decoder'])
-        
-    def forward(self, x):
-        mu_z, log_var_z = self.encoder(x)
-        z = self.reparameterise(mu_z, log_var_z)
-        return self.decoder(z), mu_z, log_var_z
-    
-    def reparameterise(self, mu, log_var):
-        std = torch.exp(0.5 * log_var)
-        epsilon = torch.randn_like(std)
-        return mu + (epsilon * std)
-    
-    def training_step(self, batch, batch_idx):
-        x = batch[0]
-        x_hat, mu_z, log_var_z = self.forward(x)
-        mse = self.mse_loss(x_hat, x)
-        kl = self.kl_weight * self.kl_loss(mu_z, log_var_z)
-        loss = mse + kl
-        if self.wandb_log:
-            self.logger.experiment.log(
-                {'train_loss' : loss, 'train_mse' : mse, 'train_kl' : kl},
-                step=self.trainer.global_step
-            )
-        return loss
-    
-    def validation_step(self, batch, batch_idx):
-        with torch.no_grad():
-            x = batch[0]
-            x_hat, mu_z, log_var_z = self.forward(x)
-            mse = self.mse_loss(x_hat, x)
-            kl = self.kl_weight * self.kl_loss(mu_z, log_var_z)
-            loss = mse + kl
-            self.log('val_loss', loss)
-            if self.wandb_log:
-                self.logger.experiment.log(
-                    {'val_loss' : loss, 'val_mse' : mse, 'val_kl' : kl},
-                    step=self.trainer.global_step
-                )
-            return loss
-    
-    def test_step(self, batch, batch_idx):
-        with torch.no_grad():
-            x = batch[0]
-            x_hat, mu, log_var = self.forward(x)
-            mse = self.mse_loss(x_hat, x)
-            kl = self.kl_weight * self.kl_loss(mu, log_var)
-            loss = mse + kl
-            if self.wandb_log:
-                self.logger.experiment.log(
-                    {'test_loss' : loss, 'test_mse' : mse, 'test_kl' : kl},
-                    step=self.trainer.global_step
-                )
-            return loss
-    
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-    
-    
-class LightningAutoEncoder(pl.LightningModule):
-    def __init__(self,
-                 encoder : nn.Module,
-                 decoder : nn.Module,
-                 wandb_log : Optional[wandb.sdk.wandb_run.Run] = None, # wandb logger
-                 git_hash : Optional[str] = None, # git hash of the current commit
-                 lr : Optional[float] = 1e-3, # learning rate
-                 seed : int = None # seed for reproducibility
-                 ) -> None:
-        super().__init__()
-        
-        self.encoder = encoder
-        self.decoder = decoder
-        
-        self.wandb_log = wandb_log
-        self.git_hash = git_hash
-        self.lr = lr
-        self.seed = seed
-        self.mse_loss = nn.MSELoss(reduction='mean')
-        self.save_hyperparameters(ignore=['encoder', 'decoder'])
-        
-    def forward(self, x):
-        z, _ = self.encoder(x)
-        return self.decoder(z)
-    
-    
-    def training_step(self, batch, batch_idx):
-        x = batch[0]
-        x_hat = self.forward(x)
-        mse = self.mse_loss(x_hat, x)
-        loss = mse
-        if self.wandb_log:
-            self.logger.experiment.log(
-                {'train_loss' : loss, 'train_mse' : mse},
-                step=self.trainer.global_step
-            )
-        return loss
-    
-    def validation_step(self, batch, batch_idx):
-        with torch.no_grad():
-            x = batch[0]
-            x_hat = self.forward(x)
-            mse = self.mse_loss(x_hat, x)
-            loss = mse
-            self.log('val_loss', loss)
-            if self.wandb_log:
-                self.logger.experiment.log(
-                    {'val_loss' : loss, 'val_mse' : mse},
-                    step=self.trainer.global_step
-                )
-            return loss
-    
-    def test_step(self, batch, batch_idx):
-        with torch.no_grad():
-            x = batch[0]
-            x_hat = self.forward(x)
-            mse = self.mse_loss(x_hat, x)
-            loss = mse
-            if self.wandb_log:
-                self.logger.experiment.log(
-                    {'test_loss' : loss, 'test_mse' : mse},
-                    step=self.trainer.global_step
-                )
-            return loss
-    
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.lr)
-    
