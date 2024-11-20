@@ -19,12 +19,12 @@ if __name__ == '__main__':
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--downsample_channels_factor', type=int, default=None, help='downsample channels in each layer by this factor, use only for testing code')
     parser.add_argument('--save_test_example', help='disable save test examples to wandb', action='store_false')
     parser.add_argument('--wandb_log', help='disable wandb logging', action='store_false', default=True)
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
+    parser.add_argument('--autocast', choices=['float16', 'float32'], default='float16', help='automatic mixed precision')
 
     args = parser.parse_args()
     logging.info(f'args dict: {vars(args)}')
@@ -46,6 +46,8 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'using device: {device}')
     
+    autocast = torch.float16 if args.autocast == 'float16' else torch.float32
+    
     # ==================== Data ====================
     
     (dataset, train_dataset, val_dataset, test_dataset, train_loader, 
@@ -54,9 +56,8 @@ if __name__ == '__main__':
     # ==================== Model ====================
     image_size = (dataset.__getitem__(0)[0].shape[1], dataset.__getitem__(0)[0].shape[2])
     model = ddp.Unet(
-        dim=64, channels=1, self_condition=True, image_condition=True,
-        full_attn=False, flash_attn=False,
-        downsample_channels_factor=args.downsample_channels_factor
+        dim=32, channels=1, self_condition=True, image_condition=True,
+        full_attn=False, flash_attn=False
     )
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
@@ -92,8 +93,9 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
-            # the objective is to generate Y from Gaussian noise, conditioned on X
-            loss = diffusion.forward(Y, x_cond=X)
+            with torch.autocast(device_type=device, dtype=autocast):
+                # the objective is to generate Y from Gaussian noise, conditioned on X
+                loss = diffusion.forward(Y, x_cond=X)
             total_train_mse += loss.item()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -116,7 +118,8 @@ if __name__ == '__main__':
                     (X, Y) = batch
                     X = X.to(device)
                     Y = Y.to(device)
-                    Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
+                    with torch.autocast(device_type=device, dtype=autocast):
+                        Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
                     mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
                     if mse.min().item() < best_and_worst_examples['best']['loss']:
                         best_and_worst_examples['best']['loss'] = mse.min().item()
@@ -158,7 +161,8 @@ if __name__ == '__main__':
             (X, Y) = batch
             X = X.to(device)
             Y = Y.to(device)
-            Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
+            with torch.autocast(device_type=device, dtype=autocast):
+                Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
             mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             if mse.min().item() < best_and_worst_examples['best']['loss']:
                 best_and_worst_examples['best']['loss'] = mse.min().item()
