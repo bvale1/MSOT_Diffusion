@@ -93,7 +93,7 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
-            with torch.autocast(device_type=device, dtype=autocast):
+            with torch.autocast(device_type='cuda', dtype=autocast):
                 # the objective is to generate Y from Gaussian noise, conditioned on X
                 loss = diffusion.forward(Y, x_cond=X)
             total_train_mse += loss.item()
