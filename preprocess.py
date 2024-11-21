@@ -8,7 +8,7 @@ from dataloader import load_sim
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_name', type=str, default='ImageNet_MSOT_Dataset')
+    parser.add_argument('--dataset_name', type=str, default='21112024_ImageNet_MSOT_Dataset')
     parser.add_argument('--root_dir', type=str,
         #default = '/mnt/f/cluster_MSOT_simulations/ImageNet_fluence_correction' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows

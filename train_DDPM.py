@@ -108,7 +108,7 @@ if __name__ == '__main__':
         logging.info(f'train_epoch: {epoch}, mean_train_mse: {total_train_mse/len(train_loader)}')
         
         # ==================== Validation epoch ====================
-        if epoch % 100 == 0: # validate every 100 epochs
+        if (epoch+1) % 100 == 0: # validate every 100 epochs
             model.eval()
             total_val_mse = 0
             best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
@@ -118,7 +118,7 @@ if __name__ == '__main__':
                     (X, Y) = batch
                     X = X.to(device)
                     Y = Y.to(device)
-                    with torch.autocast(device_type=device, dtype=autocast):
+                    with torch.autocast(device_type='cuda', dtype=autocast):
                         Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
                     mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
                     if mse.min().item() < best_and_worst_examples['best']['loss']:
@@ -161,7 +161,7 @@ if __name__ == '__main__':
             (X, Y) = batch
             X = X.to(device)
             Y = Y.to(device)
-            with torch.autocast(device_type=device, dtype=autocast):
+            with torch.autocast(device_type='cuda', dtype=autocast):
                 Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
             mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             if mse.min().item() < best_and_worst_examples['best']['loss']:
