@@ -62,7 +62,7 @@ if __name__ == '__main__':
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
         model, image_size=image_size, timesteps=args.epochs*len(train_loader),
-        objective='pred_noise'
+        objective='pred_noise', auto_normalize=False
     )
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
@@ -112,7 +112,7 @@ if __name__ == '__main__':
             model.eval()
             total_val_mse = 0
             best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
-                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
+                                       'worst' : {'index' : 0, 'loss' : -np.Inf}}
             with torch.no_grad():
                 for i, batch in enumerate(val_loader):
                     (X, Y) = batch
