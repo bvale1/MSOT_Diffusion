@@ -10,9 +10,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, default='21112024_ImageNet_MSOT_Dataset')
     parser.add_argument('--root_dir', type=str,
-        #default = '/mnt/f/cluster_MSOT_simulations/ImageNet_fluence_correction' # from wsl
+        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
-        default= 'E:/ImageNet_MSOT_simulations'
+        #default= 'E:/ImageNet_MSOT_simulations'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)

@@ -120,7 +120,7 @@ if __name__ == '__main__':
                     Y = Y.to(device)
                     with torch.autocast(device_type='cuda', dtype=autocast):
                         Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
-                    mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
+                    mse = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
                     if mse.min().item() < best_and_worst_examples['best']['loss']:
                         best_and_worst_examples['best']['loss'] = mse.min().item()
                         best_and_worst_examples['best']['index'] = i*mse.argmin().item()
@@ -163,7 +163,7 @@ if __name__ == '__main__':
             Y = Y.to(device)
             with torch.autocast(device_type='cuda', dtype=autocast):
                 Y_hat = diffusion.sample(batch_size=args.batch_size, x_cond=X)
-            mse = F.mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
+            mse = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
             if mse.min().item() < best_and_worst_examples['best']['loss']:
                 best_and_worst_examples['best']['loss'] = mse.min().item()
                 best_and_worst_examples['best']['index'] = i*mse.argmin().item()
