@@ -24,7 +24,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
-    parser.add_argument('--autocast', choices=['float16', 'float32'], default='float16', help='automatic mixed precision')
+    parser.add_argument('--autocast', choices=['bfloat16', 'float32'], default='float32', help='automatic mixed precision')
 
     args = parser.parse_args()
     logging.info(f'args dict: {vars(args)}')
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'using device: {device}')
     
-    autocast = torch.float16 if args.autocast == 'float16' else torch.float32
+    autocast = torch.bfloat16 if args.autocast == 'bfloat16' else torch.float32
     
     # ==================== Data ====================
     
