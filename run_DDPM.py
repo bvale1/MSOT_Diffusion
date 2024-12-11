@@ -75,7 +75,7 @@ if __name__ == '__main__':
     )
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-        model, image_size=image_size, timesteps=args.epochs*len(dataloaders['train']),
+        model, image_size=image_size, timesteps=1000,
         sampling_timesteps=100, objective='pred_noise', auto_normalize=False
     )
     if args.load_checkpoint_dir:
