@@ -6,9 +6,9 @@ from dataloader import load_sim
 # (normalisation parameters) and pack it into a h5 and json file
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+    logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_name', type=str, default='21112024_ImageNet_MSOT_Dataset')
+    parser.add_argument('--dataset_name', type=str, default='20241208_ImageNet_MSOT_Dataset')
     parser.add_argument('--root_dir', type=str,
         default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
@@ -25,24 +25,18 @@ if __name__ == '__main__':
         'git_hash': args.git_hash,
         'n_images': 0,
         'dx' : 0.0001,
-        'units' : {'X' : 'Pa J^-1', 'Y' : 'm^-1', 'mu_a' : 'm^-1'},
-        'normalisation_X': {
-            'min': 0.0,
-            'max': 0.0,
-            'mean': 0.0,
-            'std': 0.0
+        'train_val_test_split' : [0.8, 0.1, 0.1],
+        'units' : {
+            'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
-        'normalisation_Y': {
-            'min': 0.0,
-            'max': 0.0,
-            'mean': 0.0,
-            'std': 0.0
+        'normalisation_X': {
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
+        },
+        'normalisation_corrected_image': {
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
         },
         'normalisation_mu_a': {
-            'min': 0.0,
-            'max': 0.0,
-            'mean': 0.0,
-            'std': 0.0
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
         }
     }
     
@@ -67,15 +61,32 @@ if __name__ == '__main__':
     logging.info(f'Found {len(h5_dirs)} h5 files')
     
     n_images = 0
+    sample_split = {}
     non_empty_sim_dirs = []
     for i, sim in enumerate(sim_dirs):
         with h5py.File(os.path.join(sim, 'data.h5'), 'r') as f:
             n_images += len(list(f.keys()))
             logging.info(f'Found {len(list(f.keys()))} images in {sim} ({i+1}/{len(sim_dirs)})')
             if len(list(f.keys())) != 0:
+                for image in list(f.keys()):
+                    sample_split[image] = 'train'
                 non_empty_sim_dirs.append(sim)
-                
     
+    sample_split_keys = list(sample_split.keys())
+    np.random.shuffle(sample_split_keys)
+    # normalise the train, val, and test splits
+    train_val_test_split = np.asarray(dataset_cfg['train_val_test_split'])
+    train_val_test_split /= np.sum(train_val_test_split)
+    dataset_cfg['train_val_test_split'] = train_val_test_split.tolist()
+    
+    # split the samples into train, val, and test sets
+    val_idx = int(len(sample_split_keys)*train_val_test_split[0])
+    test_idx = val_idx + int(len(sample_split_keys)*train_val_test_split[1])
+    for key in sample_split_keys[val_idx:test_idx]:
+        sample_split[key] = 'val'
+    for key in sample_split_keys[test_idx:]:
+        sample_split[key] = 'test'
+
     # rolling averages used to calculate normalisation parameters to avoid
     # floating point precision errors and conserve memory
     dataset_cfg['n_images'] = n_images
@@ -83,14 +94,13 @@ if __name__ == '__main__':
     for i, sim in enumerate(non_empty_sim_dirs):
         logging.info(f'Loading {sim} ({i+1}/{len(non_empty_sim_dirs)})')
         [data, cfg] = load_sim(sim)
+        sim = sim.replace('\\', '/')
         
         if i == 0:
             dataset_cfg['dx'] = cfg['dx']
         
         for j, image in enumerate(data.keys()):
-            group_name = (sim.split('\\')[-1]+'_'+image.split('__')[-1]).replace('.','')
-            # X is the pressure image divided by the laser energy
-            # (laser energy normalisation)
+            group_name = (sim.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
             
             if ('p0_tr' not in data[image].keys()):
                 logging.info(f'p0_tr not found in {group_name}, skipping sample')
@@ -101,13 +111,14 @@ if __name__ == '__main__':
             if ('mu_a' not in data[image].keys()):
                 logging.info(f'mu_a not found in {group_name}, skipping sample')
                 continue
-                
+            
+            # X is the pressure image divided by the laser energy (laser energy normalisation)
             X = data[image]['p0_tr'] / cfg['LaserEnergy'][j]
-            # Y is the fluence (Phi) corrected image
+            # corrected_image is the fluence (Phi) corrected image
             # fluence (Phi) is clamped at 1e-8 to avoid division by zero
             Phi = data[image]['Phi']
             Phi[Phi < 1e-8] = 1e-8
-            Y = data[image]['p0_tr'] / Phi
+            corrected_image = data[image]['p0_tr'] / Phi
             # absorption coefficient may also be used as a target instead of 
             # the fluence corrected image
             mu_a = data[image]['mu_a']
@@ -117,41 +128,46 @@ if __name__ == '__main__':
                 logging.info(f'np.min(mu_a)={np.min(mu_a)}, wavelength={cfg["wavelengths"]}')
                 logging.info(f'{100*np.sum(mu_a < 0)/np.prod(mu_a.shape)}% less than zero')
                 continue
+            if np.any(mu_a < mu_a[0,0]): # sanity checking
+                logging.info(f'{group_name} absorption coefficient less than coupling medium, skipping sample')
+                logging.info(f'np.min(mu_a)={np.min(mu_a)}, np.min(mu_a[0,0])={np.min(mu_a[0,0])}, wavelength={cfg["wavelengths"]}')
+                logging.info(f'{100*np.sum(mu_a < mu_a[0,0])/np.prod(mu_a.shape)}% less than zero')
+                continue
                 
             dataset_cfg['normalisation_X']['max'] = max(dataset_cfg['normalisation_X']['max'], float(np.max(X)))
             dataset_cfg['normalisation_X']['min'] = min(dataset_cfg['normalisation_X']['min'], float(np.min(X)))
             dataset_cfg['normalisation_X']['mean'] += float(np.mean(X) / n_images)
-            dataset_cfg['normalisation_Y']['max'] = max(dataset_cfg['normalisation_Y']['max'], float(np.max(Y)))
-            dataset_cfg['normalisation_Y']['min'] = min(dataset_cfg['normalisation_Y']['min'], float(np.min(Y)))
-            dataset_cfg['normalisation_Y']['mean'] += float(np.mean(Y) / n_images)
+            dataset_cfg['normalisation_corrected_image']['max'] = max(dataset_cfg['normalisation_corrected_image']['max'], float(np.max(corrected_image)))
+            dataset_cfg['normalisation_corrected_image']['min'] = min(dataset_cfg['normalisation_corrected_image']['min'], float(np.min(corrected_image)))
+            dataset_cfg['normalisation_corrected_image']['mean'] += float(np.mean(corrected_image) / n_images)
             dataset_cfg['normalisation_mu_a']['max'] = max(dataset_cfg['normalisation_mu_a']['max'], float(np.max(mu_a)))
             dataset_cfg['normalisation_mu_a']['min'] = min(dataset_cfg['normalisation_mu_a']['min'], float(np.min(mu_a)))
             dataset_cfg['normalisation_mu_a']['mean'] += float(np.mean(mu_a) / n_images)
             
-            
             with h5py.File(file_path, 'r+') as f:
-                group = f.require_group(group_name)
-                group.create_dataset('X', data=X, dtype=np.float32)
-                group.create_dataset('Y', data=Y, dtype=np.float32)
-                group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
+                f.require_group(sample_split[image])
+                image_group = f[sample_split[image]].require_group(group_name)
+                image_group.create_dataset('X', data=X, dtype=np.float32)
+                image_group.create_dataset('corrected_image', data=corrected_image, dtype=np.float32)
+                image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
                 
     ssr_X = 0.0
-    ssr_Y = 0.0
+    ssr_corrected_image = 0.0
     ssr_mu_a = 0.0
+    samples = []
     
     # calculate standard deviation
     logging.info(f'Calculating standard deviations')
     with h5py.File(file_path, 'r') as f:
-        for i, image in enumerate(list(f.keys())):
-            denomitator = np.prod(f[image]['X'].shape) * n_images - 1
-            ssr_X += np.sum((f[image]['X'][()] - dataset_cfg['normalisation_X']['mean'])**2) / denomitator
-            ssr_Y += np.sum((f[image]['Y'][()] - dataset_cfg['normalisation_Y']['mean'])**2) / denomitator
-            ssr_mu_a += np.sum((f[image]['mu_a'][()] - dataset_cfg['normalisation_mu_a']['mean'])**2) / denomitator
-            if i % 100 == 0:
-                logging.info(f'{image}, {i+1}/{len(list(f.keys()))}, ssr_X={ssr_X}, ssr_Y={ssr_Y}, ssr_mu_a={ssr_mu_a}')
+        for i, split in enumerate(list(f.keys())):
+            for j, image in enumerate(list(f[split].keys())):
+                denomitator = np.prod(f[split][image]['X'].shape) * n_images - 1
+                ssr_X += np.sum((f[split][image]['X'][()] - dataset_cfg['normalisation_X']['mean'])**2) / denomitator
+                ssr_corrected_image += np.sum((f[split][image]['corrected_image'][()] - dataset_cfg['normalisation_corrected_image']['mean'])**2) / denomitator
+                ssr_mu_a += np.sum((f[split][image]['mu_a'][()] - dataset_cfg['normalisation_mu_a']['mean'])**2) / denomitator
                 
     dataset_cfg['normalisation_X']['std'] = float(np.sqrt(ssr_X))
-    dataset_cfg['normalisation_Y']['std'] = float(np.sqrt(ssr_Y))
+    dataset_cfg['normalisation_corrected_image']['std'] = float(np.sqrt(ssr_corrected_image))
     dataset_cfg['normalisation_mu_a']['std'] = float(np.sqrt(ssr_mu_a))
     
     print(f'dataset_cfg {dataset_cfg}')

@@ -6,8 +6,22 @@ import torch
 import torch.nn as nn
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
+from typing import Callable
 
 from utility_classes import *
+
+
+def get_best_and_worst(loss : torch.Tensor, 
+                       best_and_worst_examples : dict, 
+                       arg0_idx : int) -> dict:
+    if loss.min().item() < best_and_worst_examples['best']['loss']:
+        best_and_worst_examples['best']['loss'] = loss.min().item()
+        best_and_worst_examples['best']['index'] = arg0_idx+loss.argmin().item()
+    if loss.max().item() > best_and_worst_examples['worst']['loss']:
+        best_and_worst_examples['worst']['loss'] = loss.max().item()
+        best_and_worst_examples['worst']['index'] = arg0_idx+loss.argmax().item()
+    return best_and_worst_examples
+
 
 def remove_dropout(module : nn.Module) -> None:
     '''
@@ -66,48 +80,157 @@ def create_dataloaders(args, model_name) -> tuple:
         wandb.login()
         wandb.init(
             project='MSOT_Diffusion', name=model_name, 
-            save_code=True, reinit=True
+            save_code=True, reinit=True, config=vars(args)
         )
-        wandb.config = vars(args)
     
     with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
-    normalise_x = MaxMinNormalise(
-        torch.Tensor([config['normalisation_X']['max']]),
-        torch.Tensor([config['normalisation_X']['min']])
-    )
+    normalise_x = ZeroToOneNormalise()
+    #normalise_x = MaxMinNormalise(
+    #    torch.Tensor([config['normalisation_X']['max']]),
+    #    torch.Tensor([config['normalisation_X']['min']])
+    #)
     x_transform = transforms.Compose([
-        ReplaceNaNWithZero(), 
+        ReplaceNaNWithZero(),
+        transforms.Resize((args.image_size, args.image_size)),
         normalise_x
     ])
-    normalise_y = MaxMinNormalise(
-        torch.Tensor([config['normalisation_mu_a']['max']]),
-        torch.Tensor([config['normalisation_mu_a']['min']])
-    )
+    normalise_y = ZeroToOneNormalise()
+    #normalise_y = MaxMinNormalise(
+    #    torch.Tensor([config['normalisation_mu_a']['max']]),
+    #    torch.Tensor([config['normalisation_mu_a']['min']])
+    #)
     y_transform = transforms.Compose([
         ReplaceNaNWithZero(),
+        transforms.Resize((args.image_size, args.image_size)),
         normalise_y
     ])
-        
-    dataset = ReconstructAbsorbtionDataset(
-        args.root_dir, gt_type='mu_a', X_transform=x_transform, Y_transform=y_transform
+    
+    datasets = {
+        'train' : ReconstructAbsorbtionDataset(
+            args.root_dir, gt_type='mu_a', split='train', data_space='image',
+            X_transform=x_transform, Y_transform=y_transform
+        ),
+        'val' : ReconstructAbsorbtionDataset(
+            args.root_dir, gt_type='mu_a', split='val', data_space='image',
+            X_transform=x_transform, Y_transform=y_transform
+        ),
+        'test' : ReconstructAbsorbtionDataset(
+            args.root_dir, gt_type='mu_a', split='test', data_space='image',
+            X_transform=x_transform, Y_transform=y_transform
+        ),
+    }
+    dataloaders = {
+        'train' : DataLoader(
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=20
+        ),
+        # backpropagation not performed on the validation set so batch size can be larger
+        'val' : DataLoader( 
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+        ),
+        # backpropagation not performed on the validation set so batch size can be larger
+        'test' : DataLoader(
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+        )
+    }
+    '''
+    dataset = ReconstructAbsorbtionDatasetOld(
+        args.root_dir, gt_type='mu_a',# split='train',# data_space='image',
+        X_transform=x_transform, Y_transform=y_transform
     )
     train_dataset, val_dataset, test_dataset = random_split(
         dataset,
         [0.8, 0.1, 0.1],
         generator=torch.Generator().manual_seed(42) # train/val/test sets are always the same
     )
-    logging.info(f'train: {len(train_dataset)}, val: {len(val_dataset)}, test: {len(test_dataset)}')
+    datasets = {'main' : dataset, 'train' : train_dataset,
+                'val' : val_dataset, 'test' : test_dataset}
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=20
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=20
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=20
+        val_dataset, batch_size=args.val_batch_size, shuffle=False, num_workers=20
     )
     test_loader = DataLoader(
-        test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=20
+        test_dataset, batch_size=args.val_batch_size, shuffle=False, num_workers=20
     )
-    
-    return (dataset, train_dataset, val_dataset, test_dataset, 
-            train_loader, val_loader, test_loader, normalise_x, normalise_y)
+    dataloaders = {
+        'train' : train_loader,
+        'val' : val_loader,
+        'test' : test_loader
+    }'''
+    logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
+        test: {len(datasets["test"])}')
+    return (datasets, dataloaders, normalise_x, normalise_y)
+
+
+def create_embedding_dataloaders(args) -> tuple:
+    datasets = {
+        'train' : ReconstructAbsorbtionDataset(
+            args.root_dir, split='train', gt_type='mu_a', data_space='latent'
+        ),
+        'val' : ReconstructAbsorbtionDataset(
+            args.root_dir, split='val', gt_type='mu_a', data_space='latent'
+        ),
+        'test' : ReconstructAbsorbtionDataset(
+            args.root_dir, split='test', gt_type='mu_a', data_space='latent'
+        )
+    }
+    dataloaders = {
+        'train' : DataLoader(
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=20
+        ),
+        # backpropagation not performed on the validation set so batch size can be larger
+        'val' : DataLoader( 
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+        ),
+        # backpropagation not performed on the validation set so batch size can be larger
+        'test' : DataLoader(
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+        )
+    }
+    return (datasets, dataloaders)
+
+
+def save_embeddings(encode_func : Callable[[torch.Tensor], list[torch.Tensor]],
+                    datasets : dict,
+                    dataloaders : dict,
+                    dirpath : str,
+                    device : torch.device) -> None:
+    """
+    Save embeddings generated by an encoding function for data from dataloaders to an HDF5 file.
+
+    Args:
+        encode_func (Callable[[torch.Tensor], list[torch.Tensor]]): A function that takes a tensor and returns its embeddings.
+        datasets (dict): A dictionary of datasets to load the data to be encoded.
+        dataloaders (dict): A dictionary of dataloaders to load the data to be encoded.
+        dirpath (str): The directory path where the embeddings file will be saved.
+        device (torch.device): The device to perform computations on (e.g., 'cpu' or 'cuda').
+    Returns:
+        None
+    """
+    embeddings_name = os.path.join(dirpath, 'embeddings.h5')
+    if os.path.exists(embeddings_name):
+        logging.info(f'{embeddings_name} already exists, will be overwritten.')
+    with h5py.File(embeddings_name, 'w') as f:
+        for key in dataloaders.keys():
+            f.create_group(key)
+            for i, batch in enumerate(dataloaders[key]):
+                batch_size = dataloaders[key].batch_size
+                with torch.no_grad():
+                    (X, Y) = batch
+                    X = X.to(device)
+                    Y = Y.to(device)
+                    X_embeddings = encode_func(X)[0].cpu().numpy()
+                    Y_embeddings = encode_func(Y)[0].cpu().numpy()
+                for j in range(len(X_embeddings)):
+                    sample_name = datasets[key].samples[i*batch_size+j]
+                    f[key].create_group(sample_name)
+                    f[key][sample_name].create_dataset(
+                        'X', data=X_embeddings[j], dtype='float32'
+                    )
+                    f[key][sample_name].create_dataset(
+                        'Y', data=Y_embeddings[j], dtype='float32'
+                    )
+                    
