@@ -145,8 +145,6 @@ if __name__ == '__main__':
                                        'worst' : {'index' : 0, 'loss' : -np.Inf}}
             with torch.no_grad():
                 for i, batch in enumerate(val_loader):
-                    if i < 7:
-                        continue
                     print(f'val batch {i+1}/{len(val_loader)}')
                     (X, Y) = batch
                     X = X.to(device)
