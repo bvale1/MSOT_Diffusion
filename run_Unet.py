@@ -3,6 +3,7 @@ import wandb
 import logging 
 import torch
 import os
+import json
 import numpy as np
 import torch.nn as nn
 import segmentation_models_pytorch as smp
@@ -27,7 +28,8 @@ if __name__ == '__main__':
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
 
     args = parser.parse_args()
-    logging.info(f'args dict: {vars(args)}')
+    var_args = vars(args)
+    logging.info(f'args dict: {var_args}')
 
     torch.set_float32_matmul_precision('high')
     torch.use_deterministic_algorithms(False)
@@ -38,6 +40,7 @@ if __name__ == '__main__':
         seed = args.seed
     else:
         seed = np.random.randint(0, 2**32 - 1)
+        var_args['seed'] = seed
     logging.info(f'seed: {seed}')
     torch.manual_seed(seed) 
     torch.cuda.manual_seed(seed) 
@@ -82,6 +85,9 @@ if __name__ == '__main__':
     mse_loss = nn.MSELoss(reduction='none')
     if args.save_model_dir:
         checkpointer = uc.CheckpointSaver(args.save_model_dir)
+        with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
+            json.dump(var_args, f)
+    
     
     # ==================== Training ====================
     early_stop_patience = 10 # if mean val loss does not decrease after this many epochs, stop training
