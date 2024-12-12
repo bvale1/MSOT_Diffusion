@@ -15,7 +15,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/15102024_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20241208_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=10, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
@@ -220,19 +220,19 @@ if __name__ == '__main__':
         with torch.no_grad():
             X_hat = model.generate(X)
             Y_hat = model.generate(Y)
-        (fig_0, ax) = datasets['main'].plot_comparison(
+        (fig_0, ax) = datasets['test'].plot_comparison(
             X_0, Y_0, Y_hat[0], X_hat=X_hat[0],
             X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',
             #min_X=min_X[0], max_X=max_X[0], min_Y=min_Y[0], max_Y=max_Y[0]
         )
-        (fig_best, ax) = datasets['main'].plot_comparison(
+        (fig_best, ax) = datasets['test'].plot_comparison(
             X_best, Y_best, Y_hat[1], X_hat=X_hat[1], 
             X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',
             #min_X=min_X[1], max_X=max_X[1], min_Y=min_Y[1], max_Y=max_Y[1]
         )
-        (fig, ax) = datasets['main'].plot_comparison(
+        (fig, ax) = datasets['test'].plot_comparison(
             X_worst, Y_worst, Y_hat[2], X_hat=X_hat[2],
             X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',

@@ -25,6 +25,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_test_examples', default=False, help='save test examples to save_dir and wandb', action='store_true')
     parser.add_argument('--wandb_log', default=False, help='use wandb logging', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_noise', help='objective of the diffusion model')
+    parser.add_argument('--self_condition', default=False, help='condition on the previous timestep', action='store_true')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
@@ -70,13 +72,13 @@ if __name__ == '__main__':
                   datasets['train'].__getitem__(0)[0].shape[-1])
     channels = datasets['train'].__getitem__(0)[0].shape[-3]
     model = ddp.Unet(
-        dim=32, channels=channels, self_condition=True, image_condition=True,
-        full_attn=False, flash_attn=False
+        dim=32, channels=channels, self_condition=args.self_condition,
+        image_condition=True, full_attn=False, flash_attn=False
     )
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
         model, image_size=image_size, timesteps=1000,
-        sampling_timesteps=100, objective='pred_noise', auto_normalize=False
+        sampling_timesteps=100, objective=args.objective, auto_normalize=False
     )
     if args.load_checkpoint_dir:
         try:
