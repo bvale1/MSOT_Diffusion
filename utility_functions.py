@@ -108,15 +108,15 @@ def create_dataloaders(args, model_name) -> tuple:
     ])
     
     datasets = {
-        'train' : ReconstructAbsorbtionDataset(
+        'train' : ReconstructAbsorbtionDatasetSynthetic(
             args.root_dir, gt_type='mu_a', split='train', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),
-        'val' : ReconstructAbsorbtionDataset(
+        'val' : ReconstructAbsorbtionDatasetSynthetic(
             args.root_dir, gt_type='mu_a', split='val', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),
-        'test' : ReconstructAbsorbtionDataset(
+        'test' : ReconstructAbsorbtionDatasetSynthetic(
             args.root_dir, gt_type='mu_a', split='test', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),

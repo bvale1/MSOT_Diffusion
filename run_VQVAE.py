@@ -29,7 +29,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='VQVAE_checkpoints', help='path to save the model')
     parser.add_argument('--save_embeddings', help='save the embeddings to save_dir', action='store_true', default=False)
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
-
+    parser.add_argument('--embedding_dim', type=int, default=2, help='dimensions of the embeddings')
+    
     args = parser.parse_args()
     var_args = vars(args)
     logging.info(f'args dict: {var_args}')
@@ -63,7 +64,7 @@ if __name__ == '__main__':
                   datasets['train'].__getitem__(0)[0].shape[-1])
     channels = datasets['train'].__getitem__(0)[0].shape[-3]
     model = VQVAE(
-        in_channels=channels, embedding_dim=2, num_embeddings=512,
+        in_channels=channels, embedding_dim=args.embedding_dim, num_embeddings=512,
         beta=0.25, img_size=image_size[0]
     )
     if args.load_checkpoint_dir:

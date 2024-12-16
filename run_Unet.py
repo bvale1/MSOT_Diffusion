@@ -15,11 +15,12 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/15102024_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20241208_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=50, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
     parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference')
+    parser.add_argument('--image_size', type=int, default=256, help='image size')
     parser.add_argument('--save_test_examples', help='save test examples to save_dir and wandb', action='store_true', default=False)
     parser.add_argument('--wandb_log', help='use wandb logging', action='store_true', default=False)
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
@@ -56,9 +57,9 @@ if __name__ == '__main__':
     )
     
     # ==================== Model ====================
-    image_size = (datasets['main'].__getitem__(0)[0].shape[-2], 
-                  datasets['main'].__getitem__(0)[0].shape[-1])
-    channels = datasets['main'].__getitem__(0)[0].shape[-3]
+    image_size = (datasets['train'].__getitem__(0)[0].shape[-2], 
+                  datasets['train'].__getitem__(0)[0].shape[-1])
+    channels = datasets['train'].__getitem__(0)[0].shape[-3]
     model = smp.Unet(
         encoder_name='resnet101', encoder_weights='imagenet',
         decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
@@ -197,15 +198,15 @@ if __name__ == '__main__':
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
         with torch.no_grad():
             Y_hat = model.forward(X)
-        (fig_0, ax) = datasets['main'].plot_comparison(
+        (fig_0, ax) = datasets['train'].plot_comparison(
             X_0, Y_0, Y_hat[0], X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
         )
-        (fig_best, ax) = datasets['main'].plot_comparison(
+        (fig_best, ax) = datasets['train'].plot_comparison(
             X_best, Y_best, Y_hat[1], X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
         )
-        (fig, ax) = datasets['main'].plot_comparison(
+        (fig, ax) = datasets['train'].plot_comparison(
             X_worst, Y_worst, Y_hat[2], X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
         )

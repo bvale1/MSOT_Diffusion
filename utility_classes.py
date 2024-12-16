@@ -5,10 +5,11 @@ import logging
 import h5py
 import json
 import os
+import glob
 import wandb
 from torch.utils.data import Dataset
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from torchvision.datasets import CelebA
+from abc import abstractmethod
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -134,58 +135,19 @@ class MeanStdNormalise(object):
 
 
 class ReconstructAbsorbtionDataset(Dataset):
-    
-    def __init__(self, data_path : str,
-                 split : str='train',
-                 gt_type : str='mu_a',
-                 data_space : str='image',
-                 X_transform=None,
-                 Y_transform=None) -> None:
+    def __init__(self, data_path : str) -> None:
+        super(ReconstructAbsorbtionDataset, self).__init__()
         self.path = data_path
-        self.X_transform = X_transform
-        self.Y_transform = Y_transform
-        
-        assert split in ['train', 'val', 'test'], f'split {split} not recognised, must be "train", "val" or "test"'
-        self.split = split
-        
-        assert gt_type in ['fluence_correction', 'mu_a'], f'gt_type {gt_type} not recognised, must be "fluence_correction" or "mu_a"'
-        self.gt_type = gt_type
-        
-        assert data_space in ['image', 'latent'], f'data_space {data_space} not recognised, must be "image" or "latent"'
-        self.data_space = data_space
-        
         with open(os.path.join(data_path, 'config.json'), 'r') as f:
             self.cfg = json.load(f)
-        
-        match gt_type:
-            case 'fluence_correction':
-                # 'corrected_image' is the image 'X' divided by the fluence 'Phi'
-                self.get_Y = lambda f, sample: f[self.split][sample]['corrected_image'][()]
-            case 'mu_a':
-                self.get_Y = lambda f, sample: f[self.split][sample]['mu_a'][()]
-        
-        match data_space:
-            case 'image':
-                with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-                    self.samples = list(f[split].keys())
-            case 'latent':
-                with h5py.File(os.path.join(self.path, 'embeddings.h5'), 'r') as f:
-                    self.samples = list(f[split].keys())
-                self.get_Y = lambda f, sample: f[self.split][sample]['Y'][()]
-        
+    
     def __len__(self) -> int:
         return len(self.samples)
-    
+
+    @abstractmethod
     def __getitem__(self, idx : int) -> tuple:
-        with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-            X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()]).unsqueeze(0)
-            Y = torch.from_numpy(self.get_Y(f, self.samples[idx])).unsqueeze(0)
-        if self.X_transform:
-            X = self.X_transform(X)
-        if self.Y_transform:
-            Y = self.Y_transform(Y)
-        return (X, Y)
-    
+        pass
+
     def plot_comparison(self, X : torch.Tensor,
                         Y : torch.Tensor,
                         Y_hat : torch.Tensor,
@@ -304,23 +266,72 @@ class ReconstructAbsorbtionDataset(Dataset):
         
         fig.tight_layout()
         return (fig, axes)
+    
+    
+class ReconstructAbsorbtionDatasetSynthetic(ReconstructAbsorbtionDataset):
+    
+    def __init__(self, data_path : str,
+                 split : str='train',
+                 gt_type : str='mu_a',
+                 data_space : str='image',
+                 X_transform=None,
+                 Y_transform=None) -> None:
+        super(ReconstructAbsorbtionDatasetSynthetic, self).__init__(data_path)
+        self.X_transform = X_transform
+        self.Y_transform = Y_transform
+        
+        assert split in ['train', 'val', 'test'], f'split {split} not recognised, \
+            must be "train", "val" or "test"'
+        self.split = split
+        
+        assert gt_type in ['fluence_correction', 'mu_a'], f'gt_type {gt_type} \
+            not recognised, must be "fluence_correction" or "mu_a"'
+        self.gt_type = gt_type
+        
+        assert data_space in ['image', 'latent'], f'data_space {data_space} \
+            not recognised, must be "image" or "latent"'
+        self.data_space = data_space
+        
+        match gt_type:
+            case 'fluence_correction':
+                # 'corrected_image' is the image 'X' divided by the fluence 'Phi'
+                self.get_Y = lambda f, sample: f[self.split][sample]['corrected_image'][()]
+            case 'mu_a':
+                self.get_Y = lambda f, sample: f[self.split][sample]['mu_a'][()]
+        
+        match data_space:
+            case 'image':
+                with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
+                    self.samples = list(f[split].keys())
+            case 'latent':
+                with h5py.File(os.path.join(self.path, 'embeddings.h5'), 'r') as f:
+                    self.samples = list(f[split].keys())
+                self.get_Y = lambda f, sample: f[self.split][sample]['Y'][()]
+    
+    def __getitem__(self, idx : int) -> tuple:
+        with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
+            X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()]).unsqueeze(0)
+            Y = torch.from_numpy(self.get_Y(f, self.samples[idx])).unsqueeze(0)
+        if self.X_transform:
+            X = self.X_transform(X)
+        if self.Y_transform:
+            Y = self.Y_transform(Y)
+        return (X, Y)
 
 
-class ReconstructAbsorbtionDatasetOld(Dataset):
+class ReconstructAbsorbtionDatasetOld(ReconstructAbsorbtionDataset):
     
     def __init__(self, data_path : str,
                  gt_type : str='mu_a',
                  X_transform=None,
                  Y_transform=None) -> None:
-        self.path = data_path
+        super(ReconstructAbsorbtionDatasetOld, self).__init__(data_path)
         self.X_transform = X_transform
         self.Y_transform = Y_transform
         
         assert gt_type in ['fluence_correction', 'mu_a'], f'gt_type \
             {gt_type} not recognised, must be "fluence_correction" or "mu_a"'
         self.gt_type = gt_type
-        with open(os.path.join(data_path, 'config.json'), 'r') as f:
-            self.cfg = json.load(f)
         
         match gt_type:
             case 'fluence_correction':
@@ -344,126 +355,41 @@ class ReconstructAbsorbtionDatasetOld(Dataset):
         if self.Y_transform:
             Y = self.Y_transform(Y)
         return (X, Y)
+'''
+class ReconstructAbsorbtionDatasetJanek(ReconstructAbsorbtionDataset):
     
-    def plot_comparison(self, X : torch.Tensor,
-                        Y : torch.Tensor,
-                        Y_hat : torch.Tensor,
-                        X_hat : torch.Tensor=None, # for autoencoders
-                        X_transform=None,
-                        Y_transform=None,
-                        X_cbar_unit : str=None,
-                        Y_cbar_unit : str=None,
-                        **kwargs) -> tuple:
-        # original sample X and reconstructed sample Y_hat
-        X = X.detach().to('cpu')
-        Y = Y.detach().to('cpu')
-        Y_hat = Y_hat.detach().to('cpu')
-        X_hat = X_hat.detach().to('cpu') if type(X_hat)==torch.Tensor else None
-        if X_transform:
-            if 'min_X' in kwargs and 'max_X' in kwargs:
-                X = X_transform.inverse(X, min_=kwargs['min_X'], max_=kwargs['max_X'])
-                X_hat = X_transform.inverse(X_hat, min_=kwargs['min_X'], max_=kwargs['max_X']) if type(X_hat)==torch.Tensor else None
-            else:
-                X = X_transform.inverse(X)
-                X_hat = X_transform.inverse(X_hat) if type(X_hat)==torch.Tensor else None
-        if Y_transform:
-            if 'min_Y' in kwargs and 'max_Y' in kwargs:
-                Y = Y_transform.inverse(Y, min_=kwargs['min_Y'], max_=kwargs['max_Y'])
-                Y_hat = Y_transform.inverse(Y_hat, min_=kwargs['min_Y'], max_=kwargs['max_Y'])
-            else:
-                Y = Y_transform.inverse(Y)
-                Y_hat = Y_transform.inverse(Y_hat)
-        X = X.squeeze().numpy()
-        Y = Y.squeeze().numpy()
-        Y_hat = Y_hat.squeeze().numpy()
-        X_hat = X_hat.squeeze().numpy() if type(X_hat)==torch.Tensor else None
-        v_max_X = max(np.max(X), np.max(X_hat)) if type(X_hat)==np.ndarray else np.max(X)
-        v_min_X = min(np.min(X), np.min(X_hat)) if type(X_hat)==np.ndarray else np.min(X)
-        v_min_Y = min(np.min(Y), np.min(Y_hat))
-        v_max_Y = max(np.max(Y), np.max(Y_hat))
-        dx = self.cfg['dx'] * 1e3 # [m] -> [mm]
-        extent = [-dx*X.shape[-2]/2, dx*X.shape[-2]/2,
-                  -dx*X.shape[-1]/2, dx*X.shape[-1]/2]
+    def __init__(self, data_path : str, 
+                 split : str='train', 
+                 gt_type : str='mu_a',):
+        self.path = data_path # don't call super because dataset doesn't have a config file 
         
-        plt.rcParams.update({'font.size': 12})
-        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-        img = []        
+        assert split in ['train', 'val', 'test'], f'split {split} not recognised, \
+            must be "train", "val" or "test"'
+        self.split = split
         
-        img.append(axes[0, 0].imshow(
-            X, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,
-            origin='lower', extent=extent
-        ))
-        axes[0, 0].set_title('X')
-        
-        img.append(axes[0, 1].imshow(
-            Y, cmap='binary_r', vmin=v_min_Y, vmax=v_max_Y, 
-            origin='lower', extent=extent
-        ))
-        axes[0, 1].set_title('Y')
-        
-        img.append(axes[0, 2].imshow(
-            Y_hat, cmap='binary_r', vmin=v_min_Y, vmax=v_max_Y, 
-            origin='lower', extent=extent
-        ))
-        axes[0, 2].set_title(r'$\hat{Y}$')
-        
-        residual = Y_hat - Y
-        img.append(axes[1, 0].imshow(
-            residual, cmap='RdBu', vmin=-np.max(np.abs(residual)),
-            vmax=np.max(np.abs(residual)), origin='lower', extent=extent
-        ))
-        axes[1, 0].set_title(r'$\hat{Y} - Y$')
-        
-        cbars = []
-        for i, ax in enumerate(axes.flat[:4]):
-            divider = make_axes_locatable(ax)
-            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
-            cbars.append(fig.colorbar(img[i], cax=cbar_ax, orientation='vertical'))
-            ax.set_xlabel('x (mm)')
-            ax.set_ylabel('z (mm)')
-        if X_cbar_unit:
-            cbars[0].set_label(X_cbar_unit)
-        if Y_cbar_unit:
-            cbars[1].set_label(Y_cbar_unit)
-            cbars[2].set_label(Y_cbar_unit)
-            cbars[3].set_label(Y_cbar_unit)
-                
-        Y_line_profile = Y[Y.shape[0]//2, :]
-        Y_hat_line_profile = Y_hat[Y_hat.shape[0]//2, :]
-        line_profile_axis = np.arange(-dx*Y.shape[-1]/2, dx*Y.shape[-1]/2, dx)
-        axes[1, 1].plot(
-            line_profile_axis, Y_line_profile, label='Y', 
-            color='tab:blue', linestyle='solid'
-        )
-        axes[1, 1].plot(
-            line_profile_axis, Y_hat_line_profile, label=r'$\hat{Y}$', 
-            color='tab:red', linestyle='dashed'
-        )
-        axes[1, 1].set_title('Line profile')
-        axes[1, 1].set_xlabel('x (mm)')
-        axes[1, 1].set_ylabel(Y_cbar_unit)
-        axes[1, 1].grid(True)
-        axes[1, 1].set_axisbelow(True)
-        axes[1, 1].set_xlim(extent[0], extent[1])
-        axes[1, 1].legend()
-        
-        if type(X_hat) == np.ndarray:
-            img.append(axes[1, 2].imshow(
-                X_hat, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,
-                origin='lower', extent=extent
-            ))
-            axes[1, 2].set_title(r'$\hat{X}$')
-            divider = make_axes_locatable(axes[1, 2])
-            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
-            cbars.append(fig.colorbar(img[-1], cax=cbar_ax, orientation='vertical'))
-            axes[1, 2].set_xlabel('x (mm)')
-            axes[1, 2].set_ylabel('z (mm)')
-            if X_cbar_unit:
-                cbars[-1].set_label(X_cbar_unit)
-        
-        fig.tight_layout()
-        return (fig, axes)
+        assert gt_type in ['mu_a', 'fluence_correction'], f'gt_type {gt_type} \ 
+        not recognised, must be "mu_a" or "fluence_correction"'
+        self.gt_type = gt_type
 
+        match split:
+            case 'train', 'val':
+                npz_dirs = glob.glob(os.path.join(
+                    data_path, 'training_data_1/**/*.npz'
+                ), recursive=True)
+                npz_dirs += glob.glob(os.path.join(
+                    data_path, 'training_data_2/**/*.npz'
+                ), recursive=True)
+                phantoms = [npz_file.split('/')[-1] for npz_file in npz_files]
+                phantoms = [phantom.split('_')[0] for phantom in phantoms]
+            case 'val':
+                pass
+            case 'test':
+                npz_files = glob.glob(os.path.join(
+                    data_path, 'test_data/**/*.npz'
+                ), recursive=True)
+
+        self.samples = 
+'''    
 
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,
