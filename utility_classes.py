@@ -10,6 +10,7 @@ import wandb
 from torch.utils.data import Dataset
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abc import abstractmethod
+from typing import Union
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -24,103 +25,94 @@ class KlDivergenceStandaredNormal(nn.Module):
         return -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
 
 
-class GradL1Loss(torch.nn.Module):
-    """Gradient loss
-    copy and paste from 
-    https://github.com/LiheYoung/Depth-Anything/blob/main/metric_depth/zoedepth/trainers/loss.py
-    @inproceedings{depthanything,
-      title={Depth Anything: Unleashing the Power of Large-Scale Unlabeled Data}, 
-      author={Yang, Lihe and Kang, Bingyi and Huang, Zilong and Xu, Xiaogang and Feng, Jiashi and Zhao, Hengshuang},
-      booktitle={CVPR},
-      year={2024}
-    }"""
-    def __init__(self):
-        super(GradL1Loss, self).__init__()
-        self.name = 'GradL1'
-
-    def forward(self, input : torch.Tensor, 
-                target : torch.Tensor, 
-                mask : torch.Tensor=None,
-                interpolate: bool=True,
-                return_interpolated : bool=False) -> tuple:
-        if input.shape[-1] != target.shape[-1] and interpolate:
-            input = nn.functional.interpolate(
-                input, target.shape[-2:], mode='bilinear', align_corners=True)
-            intr_input = input
-        else:
-            intr_input = input
-
-        grad_gt = self.grad(target)
-        grad_pred = self.grad(input)
-        mask_g = self.grad_mask(mask)
-
-        loss = F.l1_loss(grad_pred[0][mask_g], grad_gt[0][mask_g])
-        loss = loss + \
-            F.l1_loss(grad_pred[1][mask_g], grad_gt[1][mask_g])
-        if not return_interpolated:
-            return loss
-        return loss, intr_input
-    
-    def grad(self, x : torch.Tensor) -> tuple:
-        # x.shape : n, c, h, w
-        diff_x = x[..., 1:, 1:] - x[..., 1:, :-1]
-        diff_y = x[..., 1:, 1:] - x[..., :-1, 1:]
-        mag = diff_x**2 + diff_y**2
-        # angle_ratio
-        angle = torch.atan(diff_y / (diff_x + 1e-10))
-        return mag, angle
-
-    def grad_mask(self, mask : torch.Tensor) -> torch.Tensor:
-        return mask[..., 1:, 1:] & mask[..., 1:, :-1] & mask[..., :-1, 1:]
-
-
 class ReplaceNaNWithZero(object):
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         tensor[torch.isnan(tensor)] = 0.0
         return tensor
-    
 
-class MaxMinNormalise(object):
-    # normalise to min=0, max=1
-    def __init__(self, max_ : torch.Tensor, min_ : torch.Tensor) -> None:
-        self.max_ = max_.unsqueeze(-1).unsqueeze(-1)
-        self.min_ = min_.unsqueeze(-1).unsqueeze(-1)
-        
+
+class LogScaleNormalise(object):
+    '''@misc{saxena2023zeroshot,
+      title={Zero-Shot Metric Depth with a Field-of-View Conditioned Diffusion Model},
+      author={Saurabh Saxena and Junhwa Hur and Charles Herrmann and Deqing Sun and David J. Fleet},
+      year={2023},
+      eprint={2312.13252},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
+    }
+    '''
+    def __init__(self, max_ : Union[torch.Tensor, np.ndarray, float, int], 
+                 min_ : Union[torch.Tensor, np.ndarray, float, int]) -> None:
+        # normalise to log scale, min and max denote the range of the overall dataset
+        if isinstance(max_, float) or isinstance(max_, int):
+            max_ = torch.Tensor([max_])
+        elif isinstance(max_, np.ndarray):
+            max_ = torch.from_numpy(max_)
+        if isinstance(min_, float) or isinstance(min_, int):
+            min_ = torch.Tensor([min_])
+        elif isinstance(min_, np.ndarray):
+            min_ = torch.from_numpy(min_)
+        # max and min may be of shape (C, 1, 1), so each channel may
+        # be normalised separately
+        self.max_ = max_.view(-1, 1, 1)
+        self.min_ = min_.view(-1, 1, 1)
+        self.denom = torch.log(self.max_ / self.min_)
+    
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
-        return (tensor - self.min_) / (self.max_ - self.min_)
+        return torch.log(tensor / self.min_) / self.denom
     
     def inverse(self, tensor : torch.Tensor) -> torch.Tensor:
-        # use to convert back to original scale
-        return tensor * (self.max_ - self.min_) + self.min_
-
-    def inverse_numpy_flat(self, tensor : np.ndarray) -> np.ndarray:
-        # use when the tensor is a flattened numpy array (sklearn/xgboost models)
-        max_ = self.max_val.squeeze().numpy()
-        min_ = self.min_val.squeeze().numpy()
-        return tensor * (max_ - min_) + min_
+        return torch.exp(tensor * self.denom) * self.min_
 
 
-class ZeroToOneNormalise(object):
+class SampleZeroToOneNormalise(object):
+    # normalise individual sample min=0, max=1
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         min_ = torch.min(tensor).item()
         max_ = torch.max(tensor).item()
-        return (tensor - min_) / (max_ - min_)
+        #return (tensor - min_) / (max_ - min_)
+        return 2*((tensor - min_) / (max_ - min_)) - 1
     
     def inverse(self, tensor : torch.Tensor, **kwargs) -> torch.Tensor:
         # only invert if the original min and max values are provided
         if 'min_' in kwargs and 'max_' in kwargs:
-            min_ = kwargs['min_']
-            max_ = kwargs['max_']
-            return tensor * (max_ - min_) + min_
+            #return tensor * (max_ - min_) + min_
+            return ((tensor + 1) * (kwargs['min_'] - kwargs['max_']) / 2) + kwargs['min_']
         else:
             return tensor
 
+
+class SampleMeanStdNormalise(object):
+    # standardise individual sample mean=0, std=1 (standard normal distribution)
+    def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
+        mean = torch.mean(tensor)
+        std = torch.std(tensor)
+        return (tensor - mean) / std
     
-class MeanStdNormalise(object):
-    # standardise to mean=0, std=1 (standard normal distribution)
-    def __init__(self, mean : torch.Tensor, std : torch.Tensor) -> None:
-        self.mean = mean.unsqueeze(-1).unsqueeze(-1)
-        self.std = std.unsqueeze(-1).unsqueeze(-1)
+    def inverse(self, tensor : torch.Tensor, **kwargs) -> torch.Tensor:
+        # only invert if the original mean and std values are provided
+        if 'mean' in kwargs and 'std' in kwargs:
+            return (tensor * kwargs['std']) + kwargs['mean']
+        else:
+            return tensor
+    
+    
+class DatasetMeanStdNormalise(object):
+    # standardise to dataset mean=0, std=1 (standard normal distribution)
+    def __init__(self, mean : Union[torch.Tensor, np.ndarray, float, int], 
+                 std : Union[torch.Tensor, np.ndarray, float, int]) -> None:
+        if isinstance(mean, float) or isinstance(mean, int):
+            mean = torch.Tensor([mean])
+        elif isinstance(mean, np.ndarray):
+            mean = torch.from_numpy(mean)
+        if isinstance(std, float) or isinstance(std, int):
+            std = torch.Tensor([std])
+        elif isinstance(std, np.ndarray):
+            std = torch.from_numpy(std)
+        # mean and std may be of shape (C, 1, 1), so each channel may
+        # be normalised separately
+        self.mean = mean.view(-1, 1, 1)
+        self.std = std.view(-1, 1, 1)
         
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         return (tensor - self.mean) / self.std
@@ -128,11 +120,32 @@ class MeanStdNormalise(object):
     def inverse(self, tensor : torch.Tensor) -> torch.Tensor:
         # use to convert back to original scale
         return (tensor * self.std) + self.mean
-    
-    def inverse_numpy_flat(self, tensor : np.ndarray) -> np.ndarray:
-        # use when the tensor is a flattened numpy array (sklearn/xgboost models)
-        return (tensor * self.std.squeeze().numpy()) + self.mean.squeeze().numpy()
 
+
+class DatasetMaxMinNormalise(object):
+    # normalise to entire dataset to min=0, max=1
+    def __init__(self, max_ : Union[torch.Tensor, np.ndarray, float, int],
+                 min_ : Union[torch.Tensor, np.ndarray, float, int]) -> None:
+        if isinstance(max_, float) or isinstance(max_, int):
+            max_ = torch.Tensor([max_])
+        elif isinstance(max_, np.ndarray):
+            max_ = torch.from_numpy(max_)
+        if isinstance(min_, float) or isinstance(min_, int):
+            min_ = torch.Tensor([min_])
+        elif isinstance(min_, np.ndarray):
+            min_ = torch.from_numpy(min_)
+        # max and min may be of shape (C, 1, 1), so each channel may
+        # be normalised separately
+        self.max_ = max_.view(-1, 1, 1)
+        self.min_ = min_.view(-1, 1, 1)
+        
+    def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
+        return (tensor - self.min_) / (self.max_ - self.min_)
+    
+    def inverse(self, tensor : torch.Tensor) -> torch.Tensor:
+        # use to convert back to original scale
+        return tensor * (self.max_ - self.min_) + self.min_
+    
 
 class ReconstructAbsorbtionDataset(Dataset):
     def __init__(self, data_path : str) -> None:
@@ -268,7 +281,7 @@ class ReconstructAbsorbtionDataset(Dataset):
         return (fig, axes)
     
     
-class ReconstructAbsorbtionDatasetSynthetic(ReconstructAbsorbtionDataset):
+class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
     
     def __init__(self, data_path : str,
                  split : str='train',
@@ -276,7 +289,7 @@ class ReconstructAbsorbtionDatasetSynthetic(ReconstructAbsorbtionDataset):
                  data_space : str='image',
                  X_transform=None,
                  Y_transform=None) -> None:
-        super(ReconstructAbsorbtionDatasetSynthetic, self).__init__(data_path)
+        super(SyntheticReconstructAbsorbtionDataset, self).__init__(data_path)
         self.X_transform = X_transform
         self.Y_transform = Y_transform
         
@@ -301,60 +314,28 @@ class ReconstructAbsorbtionDatasetSynthetic(ReconstructAbsorbtionDataset):
         
         match data_space:
             case 'image':
-                with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-                    self.samples = list(f[split].keys())
+                self.h5_file = os.path.join(self.path, 'dataset.h5')
             case 'latent':
-                with h5py.File(os.path.join(self.path, 'embeddings.h5'), 'r') as f:
-                    self.samples = list(f[split].keys())
+                self.h5_file = os.path.join(self.path, 'embeddings.h5')
                 self.get_Y = lambda f, sample: f[self.split][sample]['Y'][()]
-    
+                
+        with h5py.File(self.h5_file, 'r') as f:
+            self.samples = list(f[split].keys())
+                
     def __getitem__(self, idx : int) -> tuple:
-        with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-            X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()]).unsqueeze(0)
-            Y = torch.from_numpy(self.get_Y(f, self.samples[idx])).unsqueeze(0)
+        with h5py.File(self.h5_file, 'r') as f:
+            X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
+            Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
         if self.X_transform:
             X = self.X_transform(X)
         if self.Y_transform:
             Y = self.Y_transform(Y)
+        if X.dim()==2: # add channel dimension
+            X = X.unsqueeze(0)
+        if Y.dim()==2:
+            Y = Y.unsqueeze(0)
         return (X, Y)
 
-
-class ReconstructAbsorbtionDatasetOld(ReconstructAbsorbtionDataset):
-    
-    def __init__(self, data_path : str,
-                 gt_type : str='mu_a',
-                 X_transform=None,
-                 Y_transform=None) -> None:
-        super(ReconstructAbsorbtionDatasetOld, self).__init__(data_path)
-        self.X_transform = X_transform
-        self.Y_transform = Y_transform
-        
-        assert gt_type in ['fluence_correction', 'mu_a'], f'gt_type \
-            {gt_type} not recognised, must be "fluence_correction" or "mu_a"'
-        self.gt_type = gt_type
-        
-        match gt_type:
-            case 'fluence_correction':
-                # 'corrected_image' is the image 'X' divided by the fluence 'Phi'
-                self.get_Y = lambda f, sample: f[sample]['corrected_image'][()]
-            case 'mu_a':
-                self.get_Y = lambda f, sample: f[sample]['mu_a'][()]
-
-        with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-            self.samples = list(f.keys())
-        
-    def __len__(self) -> int:
-        return len(self.samples)
-    
-    def __getitem__(self, idx : int) -> tuple:
-        with h5py.File(os.path.join(self.path, 'dataset.h5'), 'r') as f:
-            X = torch.from_numpy(f[self.samples[idx]]['X'][()]).unsqueeze(0)
-            Y = torch.from_numpy(self.get_Y(f, self.samples[idx])).unsqueeze(0)
-        if self.X_transform:
-            X = self.X_transform(X)
-        if self.Y_transform:
-            Y = self.Y_transform(Y)
-        return (X, Y)
 '''
 class ReconstructAbsorbtionDatasetJanek(ReconstructAbsorbtionDataset):
     
@@ -431,7 +412,7 @@ class CheckpointSaver:
     def load_best_model(self, model : torch.nn.Module) -> None:
         if self.top_model_paths:
             try:
-                model.load_state_dict(torch.load(self.top_model_paths[0]['path']))
+                model.load_state_dict(torch.load(self.top_model_paths[0]['path'], weights_only=True))
                 logging.info(f"Loaded best model from {self.top_model_paths[0]['path']}")
             except Exception as e:
                 logging.error(f"Error loading model: {e}")

@@ -2,11 +2,12 @@ import wandb
 import json
 import os
 import logging
+import argparse
 import torch
 import torch.nn as nn
 from torchvision import transforms
 from torch.utils.data import DataLoader, random_split
-from typing import Callable
+from typing import Callable, Union
 
 from utility_classes import *
 
@@ -86,8 +87,9 @@ def create_dataloaders(args, model_name) -> tuple:
     with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
-    normalise_x = ZeroToOneNormalise()
-    #normalise_x = MaxMinNormalise(
+    #normalise_x = SampleZeroToOneNormalise()
+    normalise_x = SampleMeanStdNormalise()
+    #normalise_x = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_X']['max']]),
     #    torch.Tensor([config['normalisation_X']['min']])
     #)
@@ -96,8 +98,9 @@ def create_dataloaders(args, model_name) -> tuple:
         transforms.Resize((args.image_size, args.image_size)),
         normalise_x
     ])
-    normalise_y = ZeroToOneNormalise()
-    #normalise_y = MaxMinNormalise(
+    #normalise_y = SampleZeroToOneNormalise()
+    normalise_y = SampleMeanStdNormalise()
+    #normalise_y = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_mu_a']['max']]),
     #    torch.Tensor([config['normalisation_mu_a']['min']])
     #)
@@ -108,15 +111,15 @@ def create_dataloaders(args, model_name) -> tuple:
     ])
     
     datasets = {
-        'train' : ReconstructAbsorbtionDatasetSynthetic(
+        'train' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='train', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),
-        'val' : ReconstructAbsorbtionDatasetSynthetic(
+        'val' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='val', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),
-        'test' : ReconstructAbsorbtionDatasetSynthetic(
+        'test' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='test', data_space='image',
             X_transform=x_transform, Y_transform=y_transform
         ),
@@ -134,32 +137,6 @@ def create_dataloaders(args, model_name) -> tuple:
             datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
         )
     }
-    '''
-    dataset = ReconstructAbsorbtionDatasetOld(
-        args.root_dir, gt_type='mu_a',# split='train',# data_space='image',
-        X_transform=x_transform, Y_transform=y_transform
-    )
-    train_dataset, val_dataset, test_dataset = random_split(
-        dataset,
-        [0.8, 0.1, 0.1],
-        generator=torch.Generator().manual_seed(42) # train/val/test sets are always the same
-    )
-    datasets = {'main' : dataset, 'train' : train_dataset,
-                'val' : val_dataset, 'test' : test_dataset}
-    train_loader = DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=20
-    )
-    val_loader = DataLoader(
-        val_dataset, batch_size=args.val_batch_size, shuffle=False, num_workers=20
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=args.val_batch_size, shuffle=False, num_workers=20
-    )
-    dataloaders = {
-        'train' : train_loader,
-        'val' : val_loader,
-        'test' : test_loader
-    }'''
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
         test: {len(datasets["test"])}')
     return (datasets, dataloaders, normalise_x, normalise_y)
@@ -167,13 +144,13 @@ def create_dataloaders(args, model_name) -> tuple:
 
 def create_embedding_dataloaders(args) -> tuple:
     datasets = {
-        'train' : ReconstructAbsorbtionDataset(
+        'train' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, split='train', gt_type='mu_a', data_space='latent'
         ),
-        'val' : ReconstructAbsorbtionDataset(
+        'val' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, split='val', gt_type='mu_a', data_space='latent'
         ),
-        'test' : ReconstructAbsorbtionDataset(
+        'test' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, split='test', gt_type='mu_a', data_space='latent'
         )
     }
@@ -234,3 +211,37 @@ def save_embeddings(encode_func : Callable[[torch.Tensor], list[torch.Tensor]],
                         'Y', data=Y_embeddings[j], dtype='float32'
                     )
                     
+                    
+def plot_test_examples(dataset : ReconstructAbsorbtionDataset, 
+                       dirpath : str,
+                       args : argparse.Namespace,
+                       X : torch.Tensor, 
+                       Y : torch.Tensor,
+                       Y_hat : torch.Tensor,
+                       X_hat : torch.Tensor=None, # for VAEs
+                       X_transform=None, 
+                       Y_transform=None,
+                       X_cbar_unit : str=r'Pa J$^{-1}$',
+                       Y_cbar_unit : str=r'cm$^{-1}$',
+                       fig_titles : Union[tuple[str], list[str]]=None,
+                       **kwargs) -> None:
+    if not X_hat:
+        X_hat = [None]*len(X)
+    assert len(X) == len(Y) == len(Y_hat) == len(X_hat), 'Input tensors must \
+        have the same length.'
+    if not fig_titles:
+        fig_titles = [f'Example {i}' for i in range(len(X))]
+    
+    Y = Y.clone() * 1e-2 # convert from cm^-1 to m^-1
+    Y_hat = Y_hat.clone() * 1e-2
+    
+    for i in range(len(X)):
+        (fig, _) = dataset.plot_comparison(
+            X[i], Y[i], Y_hat[i], X_hat=X_hat[i],
+            X_transform=X_transform, Y_transform=Y_transform,
+            X_cbar_unit=X_cbar_unit, Y_cbar_unit=Y_cbar_unit, **kwargs
+        )
+        if args.wandb_log:
+            wandb.log({fig_titles[i]: wandb.Image(fig)})
+        if args.save_dir:
+            fig.savefig(os.path.join(dirpath, fig_titles[i]+'.png'))

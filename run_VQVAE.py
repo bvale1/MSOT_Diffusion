@@ -60,16 +60,15 @@ if __name__ == '__main__':
     )
     
     # ==================== Model ====================
-    image_size = (datasets['train'].__getitem__(0)[0].shape[-2], 
-                  datasets['train'].__getitem__(0)[0].shape[-1])
-    channels = datasets['train'].__getitem__(0)[0].shape[-3]
+    image_size = (datasets['train'][0][0].shape[-2], datasets['train'][0][0].shape[-1])
+    channels = datasets['train'][0][0].shape[-3]
     model = VQVAE(
         in_channels=channels, embedding_dim=args.embedding_dim, num_embeddings=512,
         beta=0.25, img_size=image_size[0]
     )
     if args.load_checkpoint_dir:
         try:
-            model.load_state_dict(torch.load(args.load_checkpoint_dir))
+            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
             logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
         except Exception as e:
             logging.error(f'could not load checkpoint: {e}')
@@ -212,47 +211,23 @@ if __name__ == '__main__':
         )
     
     # tracking and visualising best and worst examples can highlight model 
-    # deficiencies, or outliers in the dataset
+    # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
         (X_0, Y_0) = datasets['test'][0]
         (X_best, Y_best) = datasets['test'][best_and_worst_examples['best']['index']]
         (X_worst, Y_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
-        #min_X = torch.max(X.view(X.size(0),-1), dim=-1).values.to('cpu')
-        #max_X = torch.max(X.view(X.size(0),-1), dim=-1).values.to('cpu')
         Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
-        #min_Y = torch.min(Y.view(X.size(0),-1), dim=-1).values.to('cpu')
-        #max_Y = torch.max(Y.view(X.size(0),-1), dim=-1).values.to('cpu')
         with torch.no_grad():
             X_hat = model.generate(X)
             Y_hat = model.generate(Y)
-        (fig_0, ax) = datasets['test'].plot_comparison(
-            X_0, Y_0, Y_hat[0], X_hat=X_hat[0],
+        uf.plot_test_examples(
+            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat, X_hat,
             X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',
-            #min_X=min_X[0], max_X=max_X[0], min_Y=min_Y[0], max_Y=max_Y[0]
+            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
+            fig_titles=['test_example0', 'test_example_best', 'test_example_worst']
         )
-        (fig_best, ax) = datasets['test'].plot_comparison(
-            X_best, Y_best, Y_hat[1], X_hat=X_hat[1], 
-            X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',
-            #min_X=min_X[1], max_X=max_X[1], min_Y=min_Y[1], max_Y=max_Y[1]
-        )
-        (fig, ax) = datasets['test'].plot_comparison(
-            X_worst, Y_worst, Y_hat[2], X_hat=X_hat[2],
-            X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$',
-            #min_X=min_X[2], max_X=max_X[2], min_Y=min_Y[2], max_Y=max_Y[2]
-        )
-        if args.wandb_log:
-            wandb.log({'test_example0': wandb.Image(fig_0)})
-            wandb.log({'test_example_best': wandb.Image(fig_best)})
-            wandb.log({'test_example_worst': wandb.Image(fig)})
-        if args.save_dir:
-            fig_0.savefig(os.path.join(checkpointer.dirpath, 'test_example0.png'))
-            fig_best.savefig(os.path.join(checkpointer.dirpath, 'test_example_best.png'))
-            fig.savefig(os.path.join(checkpointer.dirpath, 'test_example_worst.png'))
         
     if args.wandb_log:
         wandb.finish()

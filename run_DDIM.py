@@ -22,11 +22,11 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
     parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference, approximately 4*train_batch_size has about the same vram footprint')
-    parser.add_argument('--image_size', type=int, default=64, help='image size')   
+    parser.add_argument('--image_size', type=int, default=256, help='image size')   
     parser.add_argument('--save_test_examples', default=False, help='save test examples to save_dir and wandb', action='store_true')
     parser.add_argument('--wandb_log', default=False, help='use wandb logging', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_noise', help='objective of the diffusion model')
+    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='objective of the diffusion model')
     parser.add_argument('--self_condition', default=False, help='condition on the previous timestep', action='store_true')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
@@ -56,36 +56,32 @@ if __name__ == '__main__':
     logging.info(f'using device: {device}')
     
     # ==================== Data ====================
-    
-    (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-        args=args, model_name='DDPM'
-    )
+
     if args.use_autoencoder_dir:
-        (emb_datasets, emb_dataloaders) = uf.create_embedding_dataloaders(args)
-        train_loader = emb_dataloaders['train']
-        val_loader = emb_dataloaders['val']
-        test_loader = emb_dataloaders['test']
+        (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
+        (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+            args=args, model_name='latent_DDIM'
+        )
     else:
-        train_loader = dataloaders['train']
-        val_loader = dataloaders['val']
-        test_loader = dataloaders['test']
+        (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+            args=args, model_name='DDIM'
+        )
     
     # ==================== Model ====================
-    image_size = (datasets['train'].__getitem__(0)[0].shape[-2],
-                  datasets['train'].__getitem__(0)[0].shape[-1])
-    channels = datasets['train'].__getitem__(0)[0].shape[-3]
+    input_size = (datasets['train'][0][0].shape[-2], datasets['train'][0][0].shape[-1])
+    channels = datasets['train'][0][0].shape[-3]
     model = ddp.Unet(
         dim=32, channels=channels, self_condition=args.self_condition,
         image_condition=True, full_attn=False, flash_attn=False
     )
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-        model, image_size=image_size, timesteps=1000,
+        model, image_size=input_size, timesteps=1000,
         sampling_timesteps=100, objective=args.objective, auto_normalize=False
     )
     if args.load_checkpoint_dir:
         try:
-            model.load_state_dict(torch.load(args.load_checkpoint_dir))
+            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
             logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
         except Exception as e:
             logging.error(f'could not load checkpoint: {e}')
@@ -96,12 +92,15 @@ if __name__ == '__main__':
     diffusion = diffusion.to(device)
     
     if args.use_autoencoder_dir:
+        image_size = (image_datasets['train'][0][0].shape[-2],
+                      image_datasets['train'][0][0].shape[-1])
+        image_channels = image_datasets['train'][0][0].shape[-3]
         logging.info(f'loading autoencoder from {args.use_autoencoder_dir}')
         vqvae = VQVAE(
-            in_channels=channels, embedding_dim=16, num_embeddings=512,
+            in_channels=image_channels, embedding_dim=channels, num_embeddings=512,
             beta=0.25, img_size=image_size[0]
         )
-        vqvae.load_state_dict(torch.load(args.use_autoencoder_dir))
+        vqvae.load_state_dict(torch.load(args.use_autoencoder_dir, weights_only=True))
         vqvae = vqvae.to(device)
         vqvae.eval()
     
@@ -125,8 +124,7 @@ if __name__ == '__main__':
         total_train_loss = 0
         # ==================== Train epoch ====================
         model.train()
-        for i, batch in enumerate(train_loader):
-            (X, Y) = batch
+        for i, (X, Y) in enumerate(dataloaders['train']):
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
@@ -141,9 +139,10 @@ if __name__ == '__main__':
                 wandb.log(
                     {'train_loss' : loss.item()}
                 )
-        logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(train_loader)}')
+        logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         
         # ==================== Validation epoch ====================
+        image_val_iter = iter(image_dataloaders['val'])
         if (epoch+1) % 10 == 0: # validate every 10 epochs
             model.eval()
             total_val_loss = 0
@@ -151,9 +150,7 @@ if __name__ == '__main__':
             best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                        'worst' : {'index' : 0, 'loss' : -np.Inf}}
             with torch.no_grad():
-                for i, batch in enumerate(val_loader):
-                    print(f'val batch {i+1}/{len(val_loader)}')
-                    (X, Y) = batch
+                for i, (X, Y) in enumerate(dataloaders['val']):
                     X = X.to(device)
                     Y = Y.to(device)
                     try:
@@ -172,17 +169,17 @@ if __name__ == '__main__':
                     if args.wandb_log:
                         wandb.log({'val_loss' : loss.item()})
                         if args.use_autoencoder_dir:
-                            Y_image = dataloaders['val'].dataset.__getitem__(i)[1].to(device)
+                            Y_image = next(image_val_iter)[1].to(device)
                             loss_rec = F.mse_loss(vqvae.decode(Y_hat), Y_image)
                             total_val_loss_rec += loss_rec.item()
                             wandb.log({'val_loss_rec' : loss_rec.item()})
                        
-            total_val_loss /= len(val_loader)
+            total_val_loss /= len(dataloaders['val'])
             if args.save_dir: # save model checkpoint if validation loss is lower
                 checkpointer(model, epoch, total_val_loss)
             logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}')
             if args.use_autoencoder_dir:
-                logging.info(f'mean_val_loss_rec: {total_val_loss_rec/len(val_loader)}')
+                logging.info(f'mean_val_loss_rec: {total_val_loss_rec/len(dataloaders['val'])}')
             logging.info(f'val_epoch {best_and_worst_examples}')
             
             # check for early stopping criterion
@@ -205,28 +202,30 @@ if __name__ == '__main__':
     total_test_loss_rec = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
+    image_test_iter = iter(image_dataloaders['test'])
     with torch.no_grad():
-        for i, batch in enumerate(test_loader):
-            (X, Y) = batch
+        for i, (X, Y) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
-            best_and_worst_examples = uf.get_best_and_worst(loss, best_and_worst_examples, i)
+            best_and_worst_examples = uf.get_best_and_worst(
+                loss, best_and_worst_examples, i
+            )
             loss = loss.mean()
             total_test_loss += loss.item()
             if args.wandb_log:
                 wandb.log({'test_loss' : loss.item()})
                 if args.use_autoencoder_dir:
-                    Y_image = dataloaders['test'].dataset.__getitem__(i)[1].to(device)
+                    Y_image = next(image_test_iter)[1].to(device)
                     loss_rec = F.mse_loss(vqvae.decode(Y_hat), Y_image)
                     total_test_loss_rec += loss_rec.item()
                     wandb.log({'test_loss_rec' : loss_rec.item()})
-    logging.info(f'mean_test_loss: {total_test_loss/len(test_loader)}')
+    logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     if args.use_autoencoder_dir:
-        logging.info(f'mean_test_loss_rec: {total_test_loss_rec/len(test_loader)}')
+        logging.info(f'mean_test_loss_rec: {total_test_loss_rec/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
-    if args.save_dir:
+    if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 
             os.path.join(
@@ -235,35 +234,30 @@ if __name__ == '__main__':
         )
     
     # tracking and visualising best and worst examples can highlight model 
-    # deficiencies, or outliers in the dataset
+    # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
         (X_0, Y_0) = datasets['test'][0]
         (X_best, Y_best) = datasets['test'][best_and_worst_examples['best']['index']]
         (X_worst, Y_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
+        Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
         with torch.no_grad():
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-        (fig_0, ax) = datasets['test'].plot_comparison(
-            X_0, Y_0, Y_hat[0], X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
+        if args.use_autoencoder_dir:
+            with torch.no_grad():
+                Y_hat = vqvae.decode(Y_hat)
+            (X_0, Y_0) = image_datasets['test'][0]
+            (X_best, Y_best) = image_datasets['test'][best_and_worst_examples['best']['index']]
+            (X_worst, Y_worst) = image_datasets['test'][best_and_worst_examples['worst']['index']]
+            X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
+            Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)            
+        uf.plot_test_examples(
+            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
+            X_transform=normalise_x, Y_transform=normalise_y,
+            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
+            fig_titles=['test_example0', 'test_example_best', 'test_example_worst']
         )
-        (fig_best, ax) = datasets['test'].plot_comparison(
-            X_best, Y_best, Y_hat[1], X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
-        )
-        (fig, ax) = datasets['test'].plot_comparison(
-            X_worst, Y_worst, Y_hat[2], X_transform=normalise_x, Y_transform=normalise_y,
-            X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'm$^{-1}$'
-        )
-        if args.wandb_log:
-            wandb.log({'test_example0': wandb.Image(fig_0)})
-            wandb.log({'test_example_best': wandb.Image(fig_best)})
-            wandb.log({'test_example_worst': wandb.Image(fig)})
-        if args.save_dir:
-            fig_0.savefig(os.path.join(checkpointer.dirpath, 'test_example0.png'))
-            fig_best.savefig(os.path.join(checkpointer.dirpath, 'test_example_best.png'))
-            fig.savefig(os.path.join(checkpointer.dirpath, 'test_example_worst.png'))
         
     if args.wandb_log:
         wandb.finish()
