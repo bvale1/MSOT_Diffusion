@@ -142,7 +142,8 @@ if __name__ == '__main__':
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         
         # ==================== Validation epoch ====================
-        image_val_iter = iter(image_dataloaders['val'])
+        if args.use_autoencoder_dir:
+            image_val_iter = iter(image_dataloaders['val'])
         if (epoch+1) % 10 == 0: # validate every 10 epochs
             model.eval()
             total_val_loss = 0
@@ -202,7 +203,8 @@ if __name__ == '__main__':
     total_test_loss_rec = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    image_test_iter = iter(image_dataloaders['test'])
+    if args.use_autoencoder_dir:
+        image_test_iter = iter(image_dataloaders['test'])
     with torch.no_grad():
         for i, (X, Y) in enumerate(dataloaders['test']):
             X = X.to(device)
