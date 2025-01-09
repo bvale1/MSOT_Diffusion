@@ -326,14 +326,15 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         with h5py.File(self.h5_file, 'r') as f:
             X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
             Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
-        if self.X_transform:
-            X = self.X_transform(X)
-        if self.Y_transform:
-            Y = self.Y_transform(Y)
         if X.dim()==2: # add channel dimension
             X = X.unsqueeze(0)
         if Y.dim()==2:
             Y = Y.unsqueeze(0)
+        if self.X_transform:
+            X = self.X_transform(X)
+        if self.Y_transform:
+            Y = self.Y_transform(Y)
+        
         return (X, Y)
 
 '''

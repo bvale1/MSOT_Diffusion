@@ -60,7 +60,7 @@ if __name__ == '__main__':
     if args.use_autoencoder_dir:
         (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
         (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-            args=args, model_name='latent_DDIM'
+            args=args, model_name='LDDIM'
         )
     else:
         (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(

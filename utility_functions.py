@@ -6,7 +6,7 @@ import argparse
 import torch
 import torch.nn as nn
 from torchvision import transforms
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from typing import Callable, Union
 
 from utility_classes import *
@@ -87,8 +87,8 @@ def create_dataloaders(args, model_name) -> tuple:
     with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
-    #normalise_x = SampleZeroToOneNormalise()
-    normalise_x = SampleMeanStdNormalise()
+    normalise_x = SampleZeroToOneNormalise()
+    #normalise_x = SampleMeanStdNormalise()
     #normalise_x = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_X']['max']]),
     #    torch.Tensor([config['normalisation_X']['min']])
@@ -98,8 +98,8 @@ def create_dataloaders(args, model_name) -> tuple:
         transforms.Resize((args.image_size, args.image_size)),
         normalise_x
     ])
-    #normalise_y = SampleZeroToOneNormalise()
-    normalise_y = SampleMeanStdNormalise()
+    normalise_y = SampleZeroToOneNormalise()
+    #normalise_y = SampleMeanStdNormalise()
     #normalise_y = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_mu_a']['max']]),
     #    torch.Tensor([config['normalisation_mu_a']['min']])
