@@ -87,7 +87,7 @@ if __name__ == '__main__':
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
-            json.dump(var_args, f)
+            json.dump(var_args, f, indent=4)
     
     
     # ==================== Training ====================

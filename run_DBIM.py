@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import denoising_diffusion_pytorch as ddp
 
+from diffusion_schedulers import BridgingDiffusion
 from vq_vae.vq_vae import VQVAE
 import utility_classes as uc
 import utility_functions as uf
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_test_examples', default=False, help='save test examples to save_dir and wandb', action='store_true')
     parser.add_argument('--wandb_log', default=False, help='use wandb logging', action='store_true')
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='objective of the diffusion model')
+    parser.add_argument('--integration_scheme', choices=['Euler', 'RK4'], default='Euler', help='integration scheme for the diffusion model')
     parser.add_argument('--self_condition', default=False, help='condition on the previous timestep', action='store_true')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
@@ -60,11 +61,11 @@ if __name__ == '__main__':
     if args.use_autoencoder_dir:
         (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
         (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-            args=args, model_name='LDDIM'
+            args=args, model_name='LDBIM'
         )
     else:
         (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-            args=args, model_name='DDIM'
+            args=args, model_name='DBIM'
         )
     
     # ==================== Model ====================
@@ -74,10 +75,9 @@ if __name__ == '__main__':
         dim=32, channels=channels, self_condition=args.self_condition,
         image_condition=True, full_attn=False, flash_attn=False
     )
-    diffusion = ddp.GaussianDiffusion(
-        # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-        model, image_size=input_size, timesteps=1000,
-        sampling_timesteps=100, objective=args.objective, auto_normalize=False
+    diffusion = BridgingDiffusion(
+        model, training_timesteps=1000, sampling_timesteps=100,
+        integration_scheme=args.integration_scheme
     )
     if args.load_checkpoint_dir:
         try:
@@ -129,7 +129,7 @@ if __name__ == '__main__':
             Y = Y.to(device)
             optimizer.zero_grad()
             # the objective is to generate Y from Gaussian noise, conditioned on X
-            loss = diffusion.forward(Y, x_cond=X)
+            loss = diffusion.forward(X, Y, x_cond=X)
             total_train_loss += loss.item()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -155,9 +155,7 @@ if __name__ == '__main__':
                     X = X.to(device)
                     Y = Y.to(device)
                     try:
-                        Y_hat = diffusion.sample(
-                            batch_size=X.shape[0], x_cond=X
-                        )
+                        Y_hat = diffusion.sample(X, x_cond=X)
                     except Exception as e:
                         logging.error(f'could not sample from diffusion model: {e}')
                         breakpoint()
@@ -209,7 +207,7 @@ if __name__ == '__main__':
         for i, (X, Y) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
-            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+            Y_hat = diffusion.sample(X, x_cond=X)
             loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
@@ -245,7 +243,7 @@ if __name__ == '__main__':
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
         with torch.no_grad():
-            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+            Y_hat = diffusion.sample(X, x_cond=X)
         if args.use_autoencoder_dir:
             with torch.no_grad():
                 Y_hat = vqvae.decode(Y_hat)

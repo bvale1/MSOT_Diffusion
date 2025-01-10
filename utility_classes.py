@@ -65,24 +65,24 @@ class LogScaleNormalise(object):
         return torch.exp(tensor * self.denom) * self.min_
 
 
-class SampleZeroToOneNormalise(object):
+class InstanceZeroToOneNormalise(object):
     # normalise individual sample min=0, max=1
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         min_ = torch.min(tensor).item()
         max_ = torch.max(tensor).item()
-        #return (tensor - min_) / (max_ - min_)
-        return 2*((tensor - min_) / (max_ - min_)) - 1
+        return (tensor - min_) / (max_ - min_)
+        #return 2*((tensor - min_) / (max_ - min_)) - 1
     
     def inverse(self, tensor : torch.Tensor, **kwargs) -> torch.Tensor:
         # only invert if the original min and max values are provided
         if 'min_' in kwargs and 'max_' in kwargs:
-            #return tensor * (max_ - min_) + min_
-            return ((tensor + 1) * (kwargs['min_'] - kwargs['max_']) / 2) + kwargs['min_']
+            return tensor * (kwargs['max_'] - kwargs['min_']) + kwargs['min_']
+            #return ((tensor + 1) * (kwargs['min_'] - kwargs['max_']) / 2) + kwargs['min_']
         else:
             return tensor
 
 
-class SampleMeanStdNormalise(object):
+class InstanceMeanStdNormalise(object):
     # standardise individual sample mean=0, std=1 (standard normal distribution)
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         mean = torch.mean(tensor)
