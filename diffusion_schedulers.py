@@ -99,6 +99,8 @@ class BridgingDiffusion(nn.Module):
                         x_t, batched_times, v_pred, self_cond=self_cond, x_cond=x_cond
                     )
             if self.self_condition:
-                self_cond = self.pred_x_0(x_T, v_pred)
+                self_cond = self.pred_x_0(
+                    x_T, v_pred, batched_times, self.sampling_delta_t
+                )
         
         return x_t
