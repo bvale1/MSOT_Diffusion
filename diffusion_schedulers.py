@@ -52,7 +52,9 @@ class BridgingDiffusion(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
-                x_self_cond = self.pred_x_0(x_T, self.model(x_t, t))
+                x_self_cond = self.pred_x_0(
+                    x_T, self.model(x_t, t), t, self.training_delta_t
+                )
                 x_self_cond.detach_()
                         
         v_pred = self.model(x_t, t, x_self_cond=x_self_cond, x_cond=x_cond)
@@ -87,16 +89,16 @@ class BridgingDiffusion(nn.Module):
         x_t = x_T
         
         for t in reversed(range(self.sampling_timesteps)):
-            batched_times = torch.full((b,), t, device=device, dtype=torch.long)
+            t = torch.full((b,), t, device=device, dtype=torch.long)
             v_pred = self.model(
-                x_t, batched_times, x_self_cond=self_cond, x_cond=x_cond
+                x_t, t, x_self_cond=self_cond, x_cond=x_cond
             )
             match self.integration_scheme:
                 case 'Euler':
                     x_t = self.Euler_step_x_t(x_t, v_pred)
                 case 'RK4':
                     x_t = self.RK4_step_x_t(
-                        x_t, batched_times, v_pred, self_cond=self_cond, x_cond=x_cond
+                        x_t, t, v_pred, self_cond=self_cond, x_cond=x_cond
                     )
             if self.self_condition:
                 self_cond = self.pred_x_0(x_T, v_pred)
