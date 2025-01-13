@@ -89,7 +89,7 @@ class BridgingDiffusion(nn.Module):
         for t in reversed(range(self.sampling_timesteps)):
             batched_times = torch.full((b,), t, device=device, dtype=torch.long)
             v_pred = self.model(
-                x_T, batched_times, x_self_cond=self_cond, x_cond=x_cond
+                x_t, batched_times, x_self_cond=self_cond, x_cond=x_cond
             )
             match self.integration_scheme:
                 case 'Euler':
