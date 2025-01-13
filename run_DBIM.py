@@ -154,11 +154,7 @@ if __name__ == '__main__':
                 for i, (X, Y) in enumerate(dataloaders['val']):
                     X = X.to(device)
                     Y = Y.to(device)
-                    try:
-                        Y_hat = diffusion.sample(X, x_cond=X)
-                    except Exception as e:
-                        logging.error(f'could not sample from diffusion model: {e}')
-                        breakpoint()
+                    Y_hat = diffusion.sample(X, x_cond=X)
                     loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
                     best_and_worst_examples = uf.get_best_and_worst(
                         loss, best_and_worst_examples, i*args.val_batch_size

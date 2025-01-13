@@ -56,7 +56,7 @@ class BridgingDiffusion(nn.Module):
                     x_T, self.model(x_t, t), t, self.training_delta_t
                 )
                 x_self_cond.detach_()
-                        
+                
         v_pred = self.model(x_t, t, x_self_cond=x_self_cond, x_cond=x_cond)
         return F.mse_loss(v_pred, v)
     
@@ -64,20 +64,18 @@ class BridgingDiffusion(nn.Module):
         return x_t - v_pred * self.sampling_delta_t
     
     def RK4_step_x_t(self, x_t, t, v_pred, self_cond=None, x_cond=None):
+        h = self.sampling_delta_t
         k1 = v_pred
         k2 = self.model(
-            x_t - k1 * self.sampling_delta_t / 2,
-            t - self.sampling_timesteps / 2,
+            x_t - (k1 * h / 2), t - (h / 2),
             x_self_cond=self_cond, x_cond=x_cond
         )
         k3 = self.model(
-            x_t - k2 * self.sampling_delta_t / 2,
-            t - self.sampling_timesteps / 2,
+            x_t - (k2 * h / 2), t - (h / 2),
             x_self_cond=self_cond, x_cond=x_cond
         )
         k4 = self.model(
-            x_t - k3 * self.sampling_delta_t,
-            t - self.sampling_timesteps,
+            x_t - (k3 * h), t - h,
             x_self_cond=self_cond, x_cond=x_cond
         )
         return x_t - ((k1+(2*k2)+(2*k3)+k4)*self.sampling_delta_t/6)
@@ -101,6 +99,6 @@ class BridgingDiffusion(nn.Module):
                         x_t, t, v_pred, self_cond=self_cond, x_cond=x_cond
                     )
             if self.self_condition:
-                self_cond = self.pred_x_0(x_T, v_pred)
+                self_cond = self.pred_x_0(x_t, v_pred, t, self.sampling_delta_t)
         
         return x_t
