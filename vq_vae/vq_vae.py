@@ -4,18 +4,6 @@ from torch import nn
 from torch.nn import functional as F
 from vq_vae.types_ import *
 
-r'''
-VQ-VAE implementation in PyTorch from Anand K Subramanian:
-@misc{Subramanian2020,
-  author = {Subramanian, A.K},
-  title = {PyTorch-VAE},
-  year = {2020},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/AntixK/PyTorch-VAE}}
-}
-'''
-
 class VectorQuantizer(nn.Module):
     """
     Reference:

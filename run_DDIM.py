@@ -127,6 +127,9 @@ if __name__ == '__main__':
         for i, (X, Y) in enumerate(dataloaders['train']):
             X = X.to(device)
             Y = Y.to(device)
+            if args.use_autoencoder_dir:
+                X, _ = vqvae.vq_layer(X)
+                Y, _ = vqvae.vq_layer(Y)
             optimizer.zero_grad()
             # the objective is to generate Y from Gaussian noise, conditioned on X
             loss = diffusion.forward(Y, x_cond=X)
@@ -154,6 +157,9 @@ if __name__ == '__main__':
                 for i, (X, Y) in enumerate(dataloaders['val']):
                     X = X.to(device)
                     Y = Y.to(device)
+                    if args.use_autoencoder_dir:
+                        X, _ = vqvae.vq_layer(X)
+                        Y, _ = vqvae.vq_layer(Y)
                     Y_hat = diffusion.sample(
                         batch_size=X.shape[0], x_cond=X
                     )
@@ -208,6 +214,9 @@ if __name__ == '__main__':
         for i, (X, Y) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
+            if args.use_autoencoder_dir:
+                X, _ = vqvae.vq_layer(X)
+                Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
@@ -247,6 +256,9 @@ if __name__ == '__main__':
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
         with torch.no_grad():
+            if args.use_autoencoder_dir:
+                X, _ = vqvae.vq_layer(X)
+                Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
         if args.use_autoencoder_dir:
             with torch.no_grad():
