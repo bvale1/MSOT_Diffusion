@@ -165,10 +165,13 @@ if __name__ == '__main__':
                     total_val_loss += loss.item()
                     if args.wandb_log:
                         wandb.log({'val_loss' : loss.item()})
-                        if args.use_autoencoder_dir:
-                            Y_image = next(image_val_iter)[1].to(device)
-                            loss_rec = F.mse_loss(vqvae.decode(Y_hat), Y_image)
-                            total_val_loss_rec += loss_rec.item()
+                    if args.use_autoencoder_dir:
+                        Y_image = next(image_val_iter)[1].to(device)
+                        Y_hat, _ = vqvae.vq_layer(Y_hat)
+                        Y_hat = vqvae.decode(Y_hat)
+                        loss_rec = F.mse_loss(Y_hat, Y_image)
+                        total_val_loss_rec += loss_rec.item()
+                        if args.wandb_log:
                             wandb.log({'val_loss_rec' : loss_rec.item()})
                        
             total_val_loss /= len(dataloaders['val'])
@@ -214,10 +217,13 @@ if __name__ == '__main__':
             total_test_loss += loss.item()
             if args.wandb_log:
                 wandb.log({'test_loss' : loss.item()})
-                if args.use_autoencoder_dir:
-                    Y_image = next(image_test_iter)[1].to(device)
-                    loss_rec = F.mse_loss(vqvae.decode(Y_hat), Y_image)
-                    total_test_loss_rec += loss_rec.item()
+            if args.use_autoencoder_dir:
+                Y_image = next(image_test_iter)[1].to(device)
+                Y_hat, _ = vqvae.vq_layer(Y_hat)
+                Y_hat = vqvae.decode(Y_hat)
+                loss_rec = F.mse_loss(Y_hat, Y_image)
+                total_test_loss_rec += loss_rec.item()
+                if args.wandb_log:
                     wandb.log({'test_loss_rec' : loss_rec.item()})
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     if args.use_autoencoder_dir:
@@ -244,6 +250,7 @@ if __name__ == '__main__':
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
         if args.use_autoencoder_dir:
             with torch.no_grad():
+                Y_hat, _ = vqvae.vq_layer(Y_hat)
                 Y_hat = vqvae.decode(Y_hat)
             (X_0, Y_0) = image_datasets['test'][0]
             (X_best, Y_best) = image_datasets['test'][best_and_worst_examples['best']['index']]
