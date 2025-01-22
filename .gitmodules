@@ -1,0 +1,3 @@
+[submodule "end_to_end_phantom_QPAT"]
+	path = end_to_end_phantom_QPAT
+	url = https://github.com/BohndiekLab/end_to_end_phantom_QPAT
