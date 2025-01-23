@@ -225,7 +225,7 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
                        Y_cbar_unit : str=r'cm$^{-1}$',
                        fig_titles : Union[tuple[str], list[str]]=None,
                        **kwargs) -> None:
-    if not X_hat:
+    if type(X_hat) != torch.Tensor:
         X_hat = [None]*len(X)
     assert len(X) == len(Y) == len(Y_hat) == len(X_hat), 'Input tensors must \
         have the same length.'

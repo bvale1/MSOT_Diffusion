@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=50, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
-    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference')
+    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference, 4x train_batch_size should have similar device memory requirements')
     parser.add_argument('--image_size', type=int, default=256, help='image size')
     parser.add_argument('--save_test_examples', help='save test examples to save_dir and wandb', action='store_true', default=False)
     parser.add_argument('--wandb_log', help='use wandb logging', action='store_true', default=False)
@@ -27,7 +27,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
-
+    parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
+    
     args = parser.parse_args()
     var_args = vars(args)
     logging.info(f'args dict: {var_args}')
@@ -90,10 +91,10 @@ if __name__ == '__main__':
     
     
     # ==================== Training ====================
-    early_stop_patience = 10 # if mean val loss does not decrease after this many epochs, stop training
+    # if mean val loss does not decrease after this many epochs, stop training
+    early_stop_patience = args.early_stop_patience
     stop_counter = 0
     prev_val_loss = np.inf
-    
     for epoch in range(args.epochs):
         # ==================== Train epoch ====================
         model.train()

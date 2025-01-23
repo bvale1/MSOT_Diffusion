@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from vq_vae.vq_vae import VQVAE
+from vq_vae.conv_vae import ConvVAE
 import utility_classes as uc
 import utility_functions as uf
 
@@ -20,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=10, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
-    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference')
+    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference, 4x train_batch_size should have similar device memory requirements')
     parser.add_argument('--image_size', type=int, default=256, help='size of the input images')
     parser.add_argument('--save_test_examples', help='save test examples to save_dir and wandb', action='store_true', default=False)
     parser.add_argument('--wandb_log', help='use wandb logging', action='store_true', default=False)
@@ -30,6 +31,8 @@ if __name__ == '__main__':
     parser.add_argument('--save_embeddings', help='save the embeddings to save_dir', action='store_true', default=False)
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
     parser.add_argument('--embedding_dim', type=int, default=2, help='dimensions of the embeddings')
+    parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
+    parser.add_argument('--VAE_model', choices=['VQVAE', 'ConvVAE'], default='VQVAE', help='choose the VAE model to train')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -56,16 +59,24 @@ if __name__ == '__main__':
     # ==================== Data ====================
     
     (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-        args=args, model_name='VQVAE'
+        args=args, model_name=args.VAE_model
     )
     
     # ==================== Model ====================
     image_size = (datasets['train'][0][0].shape[-2], datasets['train'][0][0].shape[-1])
     channels = datasets['train'][0][0].shape[-3]
-    model = VQVAE(
-        in_channels=channels, embedding_dim=args.embedding_dim, num_embeddings=512,
-        beta=0.25, img_size=image_size[0]
-    )
+    match args.VAE_model:
+        case 'VQVAE':
+            model = VQVAE(
+                in_channels=channels, embedding_dim=args.embedding_dim,
+                num_embeddings=512,beta=0.25, img_size=image_size[0]
+            )
+        case 'ConvVAE':
+            model = ConvVAE(
+                in_channels=channels, embedding_dim=args.embedding_dim, 
+                num_embeddings=512, img_size=image_size[0], kl_min=0.0,
+                kl_max=0.1, max_steps=len(dataloaders['train'])*args.epochs
+            )
     if args.load_checkpoint_dir:
         try:
             model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
@@ -91,7 +102,8 @@ if __name__ == '__main__':
     
     
     # ==================== Training ====================
-    early_stop_patience = 5 # if mean val loss does not decrease after this many epochs, stop training
+    # if mean val loss does not decrease after this many epochs, stop training
+    early_stop_patience = args.early_stop_patience
     stop_counter = 0
     prev_val_loss = np.inf
     for epoch in range(args.epochs):

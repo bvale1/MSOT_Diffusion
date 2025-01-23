@@ -12,7 +12,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abc import abstractmethod
 from typing import Union
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class KlDivergenceStandaredNormal(nn.Module):
