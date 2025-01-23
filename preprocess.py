@@ -154,7 +154,6 @@ if __name__ == '__main__':
     ssr_X = 0.0
     ssr_corrected_image = 0.0
     ssr_mu_a = 0.0
-    samples = []
     
     # calculate standard deviation
     logging.info(f'Calculating standard deviations')
