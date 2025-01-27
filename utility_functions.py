@@ -88,22 +88,30 @@ def create_dataloaders(args, model_name) -> tuple:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
     #normalise_x = InstanceZeroToOneNormalise()
-    normalise_x = InstanceMeanStdNormalise()
+    #normalise_x = InstanceMeanStdNormalise()
     #normalise_x = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_X']['max']]),
     #    torch.Tensor([config['normalisation_X']['min']])
     #)
+    normalise_x = DatasetMaxMinNormalise(
+        torch.Tensor([config['normalisation_X']['max']]),
+        torch.Tensor([config['normalisation_X']['min']])
+    )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize((args.image_size, args.image_size)),
         normalise_x
     ])
     #normalise_y = InstanceZeroToOneNormalise()
-    normalise_y = InstanceMeanStdNormalise()
+    #normalise_y = InstanceMeanStdNormalise()
     #normalise_y = LogScaleNormalise(
     #    torch.Tensor([config['normalisation_mu_a']['max']]),
     #    torch.Tensor([config['normalisation_mu_a']['min']])
     #)
+    normalise_y = DatasetMaxMinNormalise(
+        torch.Tensor([config['normalisation_mu_a']['max']]),
+        torch.Tensor([config['normalisation_mu_a']['min']])
+    )
     y_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize((args.image_size, args.image_size)),

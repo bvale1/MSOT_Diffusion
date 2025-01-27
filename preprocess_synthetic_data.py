@@ -8,11 +8,15 @@ from dataloader import load_sim
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_name', type=str, default='20241208_ImageNet_MSOT_Dataset')
+    parser.add_argument('--dataset_name', type=str, 
+        #default='20241208_ImageNet_MSOT_Dataset'
+        default='20250127_digimouse_MSOT_Dataset'
+    )
     parser.add_argument('--root_dir', type=str,
-        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
+        #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
-        #default= 'E:/ImageNet_MSOT_simulations'
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
+        default = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
@@ -25,7 +29,7 @@ if __name__ == '__main__':
         'git_hash': args.git_hash,
         'n_images': 0,
         'dx' : 0.0001,
-        'train_val_test_split' : [0.8, 0.1, 0.1],
+        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
             'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
