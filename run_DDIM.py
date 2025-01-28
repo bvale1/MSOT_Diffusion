@@ -210,6 +210,7 @@ if __name__ == '__main__':
     total_test_loss_rec = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
+    test_metric_calculator = uc.TestMetricCalculator(n_samples=len(datasets['test']))
     if args.use_autoencoder_dir:
         image_test_iter = iter(image_dataloaders['test'])
     with torch.no_grad():
@@ -220,7 +221,8 @@ if __name__ == '__main__':
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-            loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
+            test_metric_calculator(Y=Y, Y_hat=Y_hat)
+            loss = F.mse_loss(Y, Y_hat, reduction='none').mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )
@@ -240,6 +242,9 @@ if __name__ == '__main__':
     if args.use_autoencoder_dir:
         logging.info(f'mean_test_loss_rec: {total_test_loss_rec/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
+    logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
+    if args.wandb_log:
+        wandb.log(test_metric_calculator.get_metrics())
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 

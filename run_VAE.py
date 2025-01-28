@@ -116,8 +116,8 @@ if __name__ == '__main__':
             for X in batch: # model is trained to encode both input and target
                 X = X.to(device)
                 optimizer.zero_grad()
-                recons, X, loss_vq = model.forward(X)
-                loss_vae = model.loss_function(recons, X, loss_vq)
+                X_hat, X, loss_vq = model.forward(X)
+                loss_vae = model.loss_function(X_hat, X, loss_vq)
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]
                 loss_vq = loss_vae["VQ_Loss"].mean()
@@ -146,8 +146,8 @@ if __name__ == '__main__':
             for i, batch in enumerate(dataloaders['val']):
                 for X in batch:
                     X = X.to(device)
-                    recons, X, loss_vq = model.forward(X)
-                    loss_vae = model.loss_function(recons, X, loss_vq)
+                    X_hat, X, loss_vq = model.forward(X)
+                    loss_vae = model.loss_function(X_hat, X, loss_vq)
                     loss = loss_vae["loss"].mean() # Overall loss
                     loss_rec = loss_vae["Reconstruction_Loss"]
                     loss_vq = loss_vae["VQ_Loss"].mean()
@@ -187,12 +187,14 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
+    test_metric_calculator = uc.TestMetricCalculator(n_samples=2*len(datasets['test']))
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             for X in batch:
                 X = X.to(device)
-                recons, X, loss_vq = model.forward(X)
-                loss_vae = model.loss_function(recons, X, loss_vq)
+                X_hat, X, loss_vq = model.forward(X)
+                test_metric_calculator(Y=X, Y_hat=X_hat)
+                loss_vae = model.loss_function(X_hat, X, loss_vq)
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]
                 loss_vq = loss_vae["VQ_Loss"].mean()
@@ -209,6 +211,9 @@ if __name__ == '__main__':
                 )
     logging.info(f'mean_test_loss: {total_test_loss/(2*len(dataloaders['test']))}')
     logging.info(f'test_epoch {best_and_worst_examples}')
+    logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
+    if args.wandb_log:
+        wandb.log(test_metric_calculator.get_metrics())
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 

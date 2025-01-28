@@ -164,11 +164,13 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
+    test_metric_calculator = uc.TestMetricCalculator(n_samples=len(datasets['test']))
     with torch.no_grad():
         for i, (X, Y) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = model(X)
+            test_metric_calculator(Y=Y, Y_hat=Y_hat)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
@@ -179,6 +181,9 @@ if __name__ == '__main__':
                 wandb.log({'test_loss' : loss.item()})
     logging.info(f'total_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
+    logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
+    if args.wandb_log:
+        wandb.log(test_metric_calculator.get_metrics())
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 

@@ -433,3 +433,53 @@ class CheckpointSaver:
         for o in to_remove:
             os.remove(o['path'])
         self.top_model_paths = self.top_model_paths[:self.top_n]
+        
+
+class TestMetricCalculator():
+    # class to evaluate test metrics over the entire test set, which is passed
+    # through in batches
+    def __init__(self, n_samples : int):
+        self.n_samples = n_samples
+        self.metrics = {
+            'mean_RMSE' : 0.0,
+            'mean_MAE' : 0.0,
+            'mean_Rel_Err' : 0.0,
+            'mean_PSNR' : 0.0,
+            'mean_SSIM' : 0.0
+        }        
+    
+    def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor):
+        assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
+            Y_hat.shape {Y_hat.shape}"
+        assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
+        Y_max = Y.amax(dim=(1, 2, 3), keepdim=True)
+        
+        RMSE = torch.sqrt(
+            torch.mean((Y - Y_hat)**2, dim=(1, 2, 3), keepdim=True)
+        )
+        PSNR = 20*torch.log10(Y_max / RMSE)
+        MAE = torch.mean(torch.abs(Y - Y_hat), dim=(1, 2, 3), keepdim=True)
+        Rel_Err = torch.mean(
+            100 * torch.abs(Y - Y_hat) / Y, dim=(1, 2, 3), keepdim=True
+        )
+        
+        mean_Y = torch.mean(Y, dim=(1, 2, 3), keepdim=True)
+        mean_Y_hat = torch.mean(Y_hat, dim=(1, 2, 3), keepdim=True)
+        c1 = (0.01 * Y_max)**2
+        c2 = (0.03 * Y_max)**2
+        var_Y = torch.var(Y, dim=(1, 2, 3), keepdim=True)
+        var_Y_hat = torch.var(Y_hat, dim=(1, 2, 3), keepdim=True)
+        cov_Y_Y_hat = torch.mean(
+            (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=(1, 2, 3), keepdim=True
+        )
+        SSIM = (2*mean_Y*mean_Y_hat + c1)*(2*cov_Y_Y_hat + c2) / \
+            ((mean_Y**2 + mean_Y_hat**2 + c1)*(var_Y + var_Y_hat + c2))
+        
+        self.metrics['mean_RMSE'] += RMSE.sum().item() / self.n_samples
+        self.metrics['mean_MAE'] += MAE.sum().item() / self.n_samples
+        self.metrics['mean_Rel_Err'] += Rel_Err.sum().item() / self.n_samples
+        self.metrics['mean_PSNR'] += PSNR.sum().item() / self.n_samples
+        self.metrics['mean_SSIM'] += SSIM.sum().item() / self.n_samples
+                
+    def get_metrics(self):
+        return self.metrics

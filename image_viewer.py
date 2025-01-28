@@ -14,23 +14,33 @@ from matplotlib.figure import Figure
 
 
 class ImageViewer(QWidget):
-    # GitHub copilot was heavily used in the development of this class
-    def __init__(self, sim_dirs : Union[set, tuple, list], parent=None) -> None:
+    
+    def __init__(self, sim_dirs : Union[set, tuple, list],
+                 parent=None, 
+                 load_all : bool=True # load_all=True speeds up the application if all data fits into the memory, crashes if not
+                 ) -> None:
         super().__init__(parent)
         self.initUI()
         self.sim_dirs = list(sim_dirs)
+        self.load_all = load_all
         self.image_names = {}
-        print('gathering image names...')
+        self.data = {}
+        print('gathering images...')
         for i, sim_dir in enumerate(sim_dirs):
             print(f'{i+1}/{len(sim_dirs)}')
-            [data, _] = load_sim(sim_dir, args='all', verbose=False)
+            [data, self.cfg] = load_sim(sim_dir, args='all', verbose=False)
             keys = list(data.keys())
             if len(keys) != 0:
+                if self.load_all:
+                    self.data.update(data) # add images to data dict
                 for image_name in keys:
                     self.image_names[image_name] = sim_dir
         self.idx = 0
         self.sim_dir = list(self.image_names.items())[self.idx][1]
-        [self.data, self.cfg] = load_sim(self.sim_dir, args='all', verbose=True)
+        if not self.load_all:
+            print(f'loading {self.sim_dir}')
+            [self.data, self.cfg] = load_sim(self.sim_dir, args='all', verbose=True)
+        print(f'data.keys() {data.keys()}')
         self.labels = [r'Absorption $\mu_{a}$ (m$^{-1}$)',
                        r'Scattering $\mu_{s}$ (m$^{-1}$)',
                        r'Fluence $\Phi$ (J m$^{-2}$)', 
@@ -56,15 +66,17 @@ class ImageViewer(QWidget):
             self.idx += 1
             self.plot()
 
-    def closeEvent(self) -> None:
+    def closeEvent(self, event) -> None:
         QApplication.quit()
+        super().closeEvent(event)
 
     def plot(self):
         (image_name, sim_dir) = list(self.image_names.items())[self.idx]
-        if sim_dir != self.sim_dir:
+        if sim_dir != self.sim_dir and not self.load_all:
             self.sim_dir = sim_dir
             print(f'loading {self.sim_dir}')
             [self.data, self.cfg] = load_sim(self.sim_dir, args='all', verbose=True)
+            print(f'data.keys() {data.keys()}')
         images = [self.data[image_name]['mu_a'], self.data[image_name]['mu_s'], 
                   self.data[image_name]['Phi'],
                   self.data[image_name]['mu_a']*self.data[image_name]['Phi'],
@@ -167,5 +179,5 @@ if __name__ == '__main__':
     print(f'Found {len(sim_dirs)} simulations')    
     
     app = QApplication([])
-    viewer = ImageViewer(sim_dirs)
+    viewer = ImageViewer(sim_dirs, load_all=True)
     app.exec_()
