@@ -28,41 +28,7 @@ class ReplaceNaNWithZero(object):
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
         tensor[torch.isnan(tensor)] = 0.0
         return tensor
-
-
-class LogScaleNormalise(object):
-    '''@misc{saxena2023zeroshot,
-      title={Zero-Shot Metric Depth with a Field-of-View Conditioned Diffusion Model},
-      author={Saurabh Saxena and Junhwa Hur and Charles Herrmann and Deqing Sun and David J. Fleet},
-      year={2023},
-      eprint={2312.13252},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
-    }
-    '''
-    def __init__(self, max_ : Union[torch.Tensor, np.ndarray, float, int], 
-                 min_ : Union[torch.Tensor, np.ndarray, float, int]) -> None:
-        # normalise to log scale, min and max denote the range of the overall dataset
-        if isinstance(max_, float) or isinstance(max_, int):
-            max_ = torch.Tensor([max_])
-        elif isinstance(max_, np.ndarray):
-            max_ = torch.from_numpy(max_)
-        if isinstance(min_, float) or isinstance(min_, int):
-            min_ = torch.Tensor([min_])
-        elif isinstance(min_, np.ndarray):
-            min_ = torch.from_numpy(min_)
-        # max and min may be of shape (C, 1, 1), so each channel may
-        # be normalised separately
-        self.max_ = max_.view(-1, 1, 1)
-        self.min_ = min_.view(-1, 1, 1)
-        self.denom = torch.log(self.max_ / self.min_)
     
-    def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
-        return torch.log(tensor / self.min_) / self.denom
-    
-    def inverse(self, tensor : torch.Tensor) -> torch.Tensor:
-        return torch.exp(tensor * self.denom) * self.min_
-
 
 class InstanceZeroToOneNormalise(object):
     # normalise individual sample min=0, max=1
@@ -170,10 +136,6 @@ class ReconstructAbsorbtionDataset(Dataset):
                         Y_cbar_unit : str=None,
                         **kwargs) -> tuple:
         # original sample X and reconstructed sample Y_hat
-        X = X.detach().to('cpu')
-        Y = Y.detach().to('cpu')
-        Y_hat = Y_hat.detach().to('cpu')
-        X_hat = X_hat.detach().to('cpu') if type(X_hat)==torch.Tensor else None
         if X_transform:
             if 'min_X' in kwargs and 'max_X' in kwargs:
                 X = X_transform.inverse(X, min_=kwargs['min_X'], max_=kwargs['max_X'])
@@ -188,10 +150,10 @@ class ReconstructAbsorbtionDataset(Dataset):
             else:
                 Y = Y_transform.inverse(Y)
                 Y_hat = Y_transform.inverse(Y_hat)
-        X = X.squeeze().numpy()
-        Y = Y.squeeze().numpy()
-        Y_hat = Y_hat.squeeze().numpy()
-        X_hat = X_hat.squeeze().numpy() if type(X_hat)==torch.Tensor else None
+        X = X.detach().to('cpu').squeeze().numpy()
+        Y = Y.detach().to('cpu').squeeze().numpy()
+        Y_hat = Y_hat.detach().to('cpu').squeeze().numpy()
+        X_hat = X_hat.detach().to('cpu').squeeze().numpy() if type(X_hat)==torch.Tensor else None
         v_max_X = max(np.max(X), np.max(X_hat)) if type(X_hat)==np.ndarray else np.max(X)
         v_min_X = min(np.min(X), np.min(X_hat)) if type(X_hat)==np.ndarray else np.min(X)
         v_min_Y = min(np.min(Y), np.min(Y_hat))
