@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
-    parser.add_arguemnt('--model', choices=['UNet_smp', 'UNet_e2eQPAT'], default='UNet_smp', help='model to train')
+    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT'], default='UNet_smp', help='model to train')
     
     args = parser.parse_args()
     var_args = vars(args)
