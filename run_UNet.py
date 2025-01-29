@@ -8,6 +8,7 @@ import numpy as np
 import torch.nn as nn
 import segmentation_models_pytorch as smp
 
+import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
 
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
+    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT'], default='UNet_smp', help='model to train')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -54,17 +56,25 @@ if __name__ == '__main__':
     # ==================== Data ====================
     
     (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-        args, 'Unet'
+        args, args.model
     )
     
     # ==================== Model ====================
     image_size = (datasets['train'][0][0].shape[-2],  datasets['train'][0][0].shape[-1])
     channels = datasets['train'][0][0].shape[-3]
-    model = smp.Unet(
-        encoder_name='resnet101', encoder_weights='imagenet',
-        decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-        in_channels=channels, classes=1, 
-    )
+    match args.model:
+        case 'UNet_smp':
+            model = smp.Unet(
+                encoder_name='resnet101', encoder_weights='imagenet',
+                decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
+                in_channels=channels, classes=1, 
+            )
+        case 'UNet_e2eQPAT':
+            model = e2eQPAT_networks.RegressionUNet(
+                in_channels=1, out_channels=1,
+                initial_filter_size=64, kernal_size=3
+            )
+    
     if args.load_checkpoint:
         try:
             model.load_state_dict(torch.load(args.load_checkpoint, weights_only=True))
