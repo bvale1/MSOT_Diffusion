@@ -17,8 +17,8 @@ class ImageViewer(QWidget):
     
     def __init__(self, sim_dirs : Union[set, tuple, list],
                  parent=None, 
-                 load_all : bool=True # load_all=True speeds up the application if all data fits into the memory, crashes if not
-                 ) -> None:
+                 load_all : bool=True, # load_all=True speeds up the application if all data fits into the memory, crashes if not
+                 start_idx : int=0) -> None:
         super().__init__(parent)
         self.initUI()
         self.sim_dirs = list(sim_dirs)
@@ -27,7 +27,7 @@ class ImageViewer(QWidget):
         self.data = {}
         print('gathering images...')
         for i, sim_dir in enumerate(sim_dirs):
-            print(f'{i+1}/{len(sim_dirs)}')
+            print(f'{i+1}/{len(sim_dirs)} {sim_dir}')
             [data, self.cfg] = load_sim(sim_dir, args='all', verbose=False)
             keys = list(data.keys())
             if len(keys) != 0:
@@ -35,12 +35,17 @@ class ImageViewer(QWidget):
                     self.data.update(data) # add images to data dict
                 for image_name in keys:
                     self.image_names[image_name] = sim_dir
-        self.idx = 0
+            else:
+                print(f'no data found in {sim_dir}')
+        # sort image names (alphabetically)
+        self.image_names = dict(sorted(self.image_names.items()))
+        print(f'{len(list(self.image_names.keys()))} images found')
+        self.idx = start_idx # start at image
         self.sim_dir = list(self.image_names.items())[self.idx][1]
         if not self.load_all:
             print(f'loading {self.sim_dir}')
             [self.data, self.cfg] = load_sim(self.sim_dir, args='all', verbose=True)
-        print(f'data.keys() {data.keys()}')
+        print(f'self.data.keys() {sorted(self.data.keys())}')
         self.labels = [r'Absorption $\mu_{a}$ (m$^{-1}$)',
                        r'Scattering $\mu_{s}$ (m$^{-1}$)',
                        r'Fluence $\Phi$ (J m$^{-2}$)', 
@@ -77,16 +82,20 @@ class ImageViewer(QWidget):
             print(f'loading {self.sim_dir}')
             [self.data, self.cfg] = load_sim(self.sim_dir, args='all', verbose=True)
             print(f'data.keys() {data.keys()}')
-        images = [self.data[image_name]['mu_a'], self.data[image_name]['mu_s'], 
-                  self.data[image_name]['Phi'],
-                  self.data[image_name]['mu_a']*self.data[image_name]['Phi'],
-                  self.data[image_name]['p0_tr']]
-        title = f'{image_name} in {sim_dir}'
-        self.ax.cla()
-        self.ImageViewerHeatmap(
-            images, dx=self.cfg['dx'], rowmax=3, labels=self.labels, title=title
-        )
-        self.canvas.draw()
+        images = []
+        try:        
+            images = [self.data[image_name]['mu_a'], self.data[image_name]['mu_s'], 
+                      self.data[image_name]['Phi'],
+                      self.data[image_name]['mu_a']*self.data[image_name]['Phi'],
+                      self.data[image_name]['p0_tr']]
+            title = f'{image_name} in {sim_dir}'
+            self.canvas.figure.clear()
+            self.ImageViewerHeatmap(
+                images, dx=self.cfg['dx'], rowmax=3, labels=self.labels, title=title
+            )
+            self.canvas.draw()
+        except Exception as e:
+            print(f'failed to load {image_name} from {sim_dir}\n{e}')
         
     def ImageViewerHeatmap(self, img, 
                            title='', 
@@ -179,5 +188,5 @@ if __name__ == '__main__':
     print(f'Found {len(sim_dirs)} simulations')    
     
     app = QApplication([])
-    viewer = ImageViewer(sim_dirs, load_all=True)
+    viewer = ImageViewer(sim_dirs, load_all=True, start_idx=360)
     app.exec_()

@@ -30,6 +30,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
     parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT'], default='UNet_smp', help='model to train')
+    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -180,7 +181,7 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = model(X)
-            test_metric_calculator(Y=Y, Y_hat=Y_hat)
+            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i

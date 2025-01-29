@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--embedding_dim', type=int, default=2, help='dimensions of the embeddings')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
     parser.add_argument('--VAE_model', choices=['VQVAE', 'ConvVAE'], default='VQVAE', help='choose the VAE model to train')
+    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -187,13 +188,18 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    test_metric_calculator = uc.TestMetricCalculator(n_samples=2*len(datasets['test']))
+    test_metric_calculator = uc.TestMetricCalculator(
+        n_samples=2*len(datasets['test']), y_transform=normalise_y, x_transform=normalise_x
+    )
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
-            for X in batch:
+            for j, X in enumerate(batch):
                 X = X.to(device)
                 X_hat, X, loss_vq = model.forward(X)
-                test_metric_calculator(Y=X, Y_hat=X_hat)
+                if j == 0: # invert transform depends on whether X or Y is reconstructed
+                    test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_x)
+                else:
+                    test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_y)
                 loss_vae = model.loss_function(X_hat, X, loss_vq)
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]

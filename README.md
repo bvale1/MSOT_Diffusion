@@ -24,7 +24,7 @@ See https://github.com/lucidrains/denoising-diffusion-pytorch or
 https://github.com/bvale1/denoising-diffusion-pytorch for the full bibliography
 of this repository.
 
-The code in the folder 'end_to_end_phantom_QPAT' is from 
+The code in the folder 'end_to_end_phantom_QPAT' is forked from
 https://github.com/BohndiekLab/end_to_end_phantom_QPAT
 The LICENSE.md is provided.
 @article{Janek2023IEEE,

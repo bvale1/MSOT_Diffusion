@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
     parser.add_argument('--use_autoencoder_dir', type=str, default=None, help='path to autoencoder model')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
+    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
 
     args = parser.parse_args()
     var_args = vars(args)
@@ -221,7 +222,7 @@ if __name__ == '__main__':
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-            test_metric_calculator(Y=Y, Y_hat=Y_hat)
+            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             loss = F.mse_loss(Y, Y_hat, reduction='none').mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i

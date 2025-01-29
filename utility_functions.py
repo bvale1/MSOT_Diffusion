@@ -87,31 +87,30 @@ def create_dataloaders(args, model_name) -> tuple:
     with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
-    #normalise_x = InstanceZeroToOneNormalise()
-    #normalise_x = InstanceMeanStdNormalise()
-    #normalise_x = LogScaleNormalise(
-    #    torch.Tensor([config['normalisation_X']['max']]),
-    #    torch.Tensor([config['normalisation_X']['min']])
-    #)
-    normalise_x = DatasetMaxMinNormalise(
-        torch.Tensor([config['normalisation_X']['max']]),
-        torch.Tensor([config['normalisation_X']['min']])
-    )
+    match args.data_normalisation:
+        case 'minmax':
+            normalise_x = DatasetMaxMinNormalise(
+                torch.Tensor([config['normalisation_X']['max']]),
+                torch.Tensor([config['normalisation_X']['min']])
+            )
+            normalise_y = DatasetMaxMinNormalise(
+                torch.Tensor([config['normalisation_mu_a']['max']]),
+                torch.Tensor([config['normalisation_mu_a']['min']])
+            )
+        case 'standard':
+            normalise_x = DatasetMeanStdNormalise(
+                torch.Tensor([config['normalisation_X']['mean']]),
+                torch.Tensor([config['normalisation_X']['std']])
+            )
+            normalise_y = DatasetMeanStdNormalise(
+                torch.Tensor([config['normalisation_mu_a']['mean']]),
+                torch.Tensor([config['normalisation_mu_a']['std']])
+            )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize((args.image_size, args.image_size)),
         normalise_x
     ])
-    #normalise_y = InstanceZeroToOneNormalise()
-    #normalise_y = InstanceMeanStdNormalise()
-    #normalise_y = LogScaleNormalise(
-    #    torch.Tensor([config['normalisation_mu_a']['max']]),
-    #    torch.Tensor([config['normalisation_mu_a']['min']])
-    #)
-    normalise_y = DatasetMaxMinNormalise(
-        torch.Tensor([config['normalisation_mu_a']['max']]),
-        torch.Tensor([config['normalisation_mu_a']['min']])
-    )
     y_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize((args.image_size, args.image_size)),
@@ -140,7 +139,7 @@ def create_dataloaders(args, model_name) -> tuple:
         'val' : DataLoader( 
             datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
         ),
-        # backpropagation not performed on the validation set so batch size can be larger
+        # backpropagation not performed on the test set so batch size can be larger
         'test' : DataLoader(
             datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
         )

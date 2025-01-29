@@ -438,7 +438,7 @@ class CheckpointSaver:
 class TestMetricCalculator():
     # class to evaluate test metrics over the entire test set, which is passed
     # through in batches
-    def __init__(self, n_samples : int):
+    def __init__(self, n_samples : int) -> None:
         self.n_samples = n_samples
         self.metrics = {
             'mean_RMSE' : 0.0,
@@ -448,10 +448,14 @@ class TestMetricCalculator():
             'mean_SSIM' : 0.0
         }        
     
-    def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor):
+    def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
+                 y_transform=None) -> None:
         assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
             Y_hat.shape {Y_hat.shape}"
         assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
+        if y_transform:
+            Y = y_transform.inverse(Y)
+            Y_hat = y_transform.inverse(Y_hat)
         Y_max = Y.amax(dim=(1, 2, 3), keepdim=True)
         
         RMSE = torch.sqrt(
@@ -481,5 +485,5 @@ class TestMetricCalculator():
         self.metrics['mean_PSNR'] += PSNR.sum().item() / self.n_samples
         self.metrics['mean_SSIM'] += SSIM.sum().item() / self.n_samples
                 
-    def get_metrics(self):
+    def get_metrics(self) -> dict:
         return self.metrics
