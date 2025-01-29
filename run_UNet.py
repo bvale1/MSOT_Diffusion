@@ -72,7 +72,7 @@ if __name__ == '__main__':
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
                 in_channels=1, out_channels=1,
-                initial_filter_size=64, kernal_size=3
+                initial_filter_size=64, kernel_size=3
             )
     
     if args.load_checkpoint:
