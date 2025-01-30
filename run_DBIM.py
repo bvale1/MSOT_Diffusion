@@ -209,8 +209,8 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = diffusion.sample(X, x_cond=X)
-            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
+            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )

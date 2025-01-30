@@ -196,11 +196,11 @@ if __name__ == '__main__':
             for j, X in enumerate(batch):
                 X = X.to(device)
                 X_hat, X, loss_vq = model.forward(X)
+                loss_vae = model.loss_function(X_hat, X, loss_vq)
                 if j == 0: # invert transform depends on whether X or Y is reconstructed
                     test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_x)
                 else:
                     test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_y)
-                loss_vae = model.loss_function(X_hat, X, loss_vq)
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]
                 loss_vq = loss_vae["VQ_Loss"].mean()

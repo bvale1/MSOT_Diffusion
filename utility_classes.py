@@ -136,6 +136,10 @@ class ReconstructAbsorbtionDataset(Dataset):
                         Y_cbar_unit : str=None,
                         **kwargs) -> tuple:
         # original sample X and reconstructed sample Y_hat
+        X = X.detach().to('cpu')
+        Y = Y.detach().to('cpu')
+        Y_hat = Y_hat.detach().to('cpu')
+        X_hat = X_hat.detach().to('cpu') if type(X_hat)==torch.Tensor else None
         if X_transform:
             if 'min_X' in kwargs and 'max_X' in kwargs:
                 X = X_transform.inverse(X, min_=kwargs['min_X'], max_=kwargs['max_X'])
@@ -150,10 +154,10 @@ class ReconstructAbsorbtionDataset(Dataset):
             else:
                 Y = Y_transform.inverse(Y)
                 Y_hat = Y_transform.inverse(Y_hat)
-        X = X.detach().to('cpu').squeeze().numpy()
-        Y = Y.detach().to('cpu').squeeze().numpy()
-        Y_hat = Y_hat.detach().to('cpu').squeeze().numpy()
-        X_hat = X_hat.detach().to('cpu').squeeze().numpy() if type(X_hat)==torch.Tensor else None
+        X = X.squeeze().numpy()
+        Y = Y.squeeze().numpy()
+        Y_hat = Y_hat.squeeze().numpy()
+        X_hat = X_hat.squeeze().numpy() if type(X_hat)==torch.Tensor else None
         v_max_X = max(np.max(X), np.max(X_hat)) if type(X_hat)==np.ndarray else np.max(X)
         v_min_X = min(np.min(X), np.min(X_hat)) if type(X_hat)==np.ndarray else np.min(X)
         v_min_Y = min(np.min(Y), np.min(Y_hat))
@@ -297,6 +301,11 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             Y = self.Y_transform(Y)
         
         return (X, Y)
+    
+    def get_bg_mask(self, idx : int) -> torch.Tensor:
+        with h5py.File(self.h5_file, 'r') as f:
+            bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
+        return bg_mask
 
 '''
 class ReconstructAbsorbtionDatasetJanek(ReconstructAbsorbtionDataset):
@@ -411,10 +420,17 @@ class TestMetricCalculator():
         }        
     
     def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
-                 y_transform=None) -> None:
+                 y_transform=None, Y_mask=None) -> None:
         assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
             Y_hat.shape {Y_hat.shape}"
         assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
+        
+        Y = Y.detach().cpu()
+        Y_hat = Y_hat.detach().cpu()
+        
+        if type(Y_mask) == torch.Tensor:
+            Y = Y * Y_mask
+            Y_hat = Y_hat * Y_mask
         if y_transform:
             Y = y_transform.inverse(Y)
             Y_hat = y_transform.inverse(Y_hat)

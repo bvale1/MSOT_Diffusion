@@ -181,8 +181,8 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = model(X)
-            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
+            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )

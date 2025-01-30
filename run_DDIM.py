@@ -222,8 +222,8 @@ if __name__ == '__main__':
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             loss = F.mse_loss(Y, Y_hat, reduction='none').mean(dim=(1, 2, 3))
+            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )
