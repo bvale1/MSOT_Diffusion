@@ -127,9 +127,9 @@ if __name__ == '__main__':
         total_train_loss = 0
         # ==================== Train epoch ====================
         model.train()
-        for i, (X, Y) in enumerate(dataloaders['train']):
-            X = X.to(device)
-            Y = Y.to(device)
+        for i, batch in enumerate(dataloaders['train']):
+            X = batch[0].to(device)
+            Y = batch[1].to(device)
             if args.use_autoencoder_dir:
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
@@ -157,9 +157,9 @@ if __name__ == '__main__':
             best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                        'worst' : {'index' : 0, 'loss' : -np.Inf}}
             with torch.no_grad():
-                for i, (X, Y) in enumerate(dataloaders['val']):
-                    X = X.to(device)
-                    Y = Y.to(device)
+                for i, batch in enumerate(dataloaders['val']):
+                    X = batch[0].to(device)
+                    Y = batch[1].to(device)
                     if args.use_autoencoder_dir:
                         X, _ = vqvae.vq_layer(X)
                         Y, _ = vqvae.vq_layer(Y)
@@ -215,15 +215,14 @@ if __name__ == '__main__':
     if args.use_autoencoder_dir:
         image_test_iter = iter(image_dataloaders['test'])
     with torch.no_grad():
-        for i, (X, Y) in enumerate(dataloaders['test']):
-            X = X.to(device)
-            Y = Y.to(device)
+        for i, batch in enumerate(dataloaders['test']):
+            X = batch[0].to(device)
+            Y = batch[1].to(device)
             if args.use_autoencoder_dir:
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             loss = F.mse_loss(Y, Y_hat, reduction='none').mean(dim=(1, 2, 3))
-            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )
@@ -232,13 +231,22 @@ if __name__ == '__main__':
             if args.wandb_log:
                 wandb.log({'test_loss' : loss.item()})
             if args.use_autoencoder_dir:
-                Y_image = next(image_test_iter)[1].to(device)
+                (Y_image, bg_mask) = next(image_test_iter)[1:].to(device)
                 Y_hat, _ = vqvae.vq_layer(Y_hat)
                 Y_hat = vqvae.decode(Y_hat)
                 loss_rec = F.mse_loss(Y_hat, Y_image)
                 total_test_loss_rec += loss_rec.item()
+                test_metric_calculator(
+                    Y=Y_image, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
+                )
                 if args.wandb_log:
                     wandb.log({'test_loss_rec' : loss_rec.item()})
+            else:
+                bg_mask = batch[2]
+                test_metric_calculator(
+                    Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
+                )
+            
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     if args.use_autoencoder_dir:
         logging.info(f'mean_test_loss_rec: {total_test_loss_rec/len(dataloaders['test'])}')

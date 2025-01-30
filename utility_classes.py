@@ -291,6 +291,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         with h5py.File(self.h5_file, 'r') as f:
             X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
             Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
+            bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
         if X.dim()==2: # add channel dimension
             X = X.unsqueeze(0)
         if Y.dim()==2:
@@ -300,12 +301,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         if self.Y_transform:
             Y = self.Y_transform(Y)
         
-        return (X, Y)
-    
-    def get_bg_mask(self, idx : int) -> torch.Tensor:
-        with h5py.File(self.h5_file, 'r') as f:
-            bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
-        return bg_mask
+        return (X, Y, bg_mask)
 
 '''
 class ReconstructAbsorbtionDatasetJanek(ReconstructAbsorbtionDataset):
@@ -420,39 +416,42 @@ class TestMetricCalculator():
         }        
     
     def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
-                 y_transform=None, Y_mask=None) -> None:
+                 Y_transform=None, Y_mask=None) -> None:
         assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
             Y_hat.shape {Y_hat.shape}"
         assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
         
         Y = Y.detach().cpu()
         Y_hat = Y_hat.detach().cpu()
-        
+        b = Y.shape[0]
         if type(Y_mask) == torch.Tensor:
-            Y = Y * Y_mask
-            Y_hat = Y_hat * Y_mask
-        if y_transform:
-            Y = y_transform.inverse(Y)
-            Y_hat = y_transform.inverse(Y_hat)
-        Y_max = Y.amax(dim=(1, 2, 3), keepdim=True)
+            Y = Y[Y_mask].view(b, -1)
+            Y_hat = Y_hat[Y_mask].view(b, -1)
+        else:
+            Y = Y.view(b, -1)
+            Y_hat = Y_hat.view(b, -1)
+        if Y_transform:
+            Y = Y_transform.inverse(Y)
+            Y_hat = Y_transform.inverse(Y_hat)
+        Y_max = Y.amax(dim=1, keepdim=True)
         
         RMSE = torch.sqrt(
-            torch.mean((Y - Y_hat)**2, dim=(1, 2, 3), keepdim=True)
+            torch.mean((Y - Y_hat)**2, dim=1, keepdim=True)
         )
         PSNR = 20*torch.log10(Y_max / RMSE)
-        MAE = torch.mean(torch.abs(Y - Y_hat), dim=(1, 2, 3), keepdim=True)
+        MAE = torch.mean(torch.abs(Y - Y_hat), dim=1, keepdim=True)
         Rel_Err = torch.mean(
-            100 * torch.abs(Y - Y_hat) / Y, dim=(1, 2, 3), keepdim=True
+            100 * torch.abs(Y - Y_hat) / Y, dim=1, keepdim=True
         )
         
-        mean_Y = torch.mean(Y, dim=(1, 2, 3), keepdim=True)
-        mean_Y_hat = torch.mean(Y_hat, dim=(1, 2, 3), keepdim=True)
+        mean_Y = torch.mean(Y, dim=1, keepdim=True)
+        mean_Y_hat = torch.mean(Y_hat, dim=1, keepdim=True)
         c1 = (0.01 * Y_max)**2
         c2 = (0.03 * Y_max)**2
-        var_Y = torch.var(Y, dim=(1, 2, 3), keepdim=True)
-        var_Y_hat = torch.var(Y_hat, dim=(1, 2, 3), keepdim=True)
+        var_Y = torch.var(Y, dim=1, keepdim=True)
+        var_Y_hat = torch.var(Y_hat, dim=1, keepdim=True)
         cov_Y_Y_hat = torch.mean(
-            (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=(1, 2, 3), keepdim=True
+            (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=1, keepdim=True
         )
         SSIM = (2*mean_Y*mean_Y_hat + c1)*(2*cov_Y_Y_hat + c2) / \
             ((mean_Y**2 + mean_Y_hat**2 + c1)*(var_Y + var_Y_hat + c2))

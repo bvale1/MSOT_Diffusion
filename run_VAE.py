@@ -114,11 +114,12 @@ if __name__ == '__main__':
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}        
         for i, batch in enumerate(dataloaders['train']):
-            for X in batch: # model is trained to encode both input and target
-                X = X.to(device)
+            (X, Y, _) = batch
+            for x in (X, Y): # model is trained to encode both input and target
+                x = x.to(device)
                 optimizer.zero_grad()
-                X_hat, X, loss_vq = model.forward(X)
-                loss_vae = model.loss_function(X_hat, X, loss_vq)
+                x_hat, x, loss_vq = model.forward(x)
+                loss_vae = model.loss_function(x_hat, x, loss_vq)
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]
                 loss_vq = loss_vae["VQ_Loss"].mean()
@@ -145,10 +146,11 @@ if __name__ == '__main__':
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         with torch.no_grad():
             for i, batch in enumerate(dataloaders['val']):
-                for X in batch:
-                    X = X.to(device)
-                    X_hat, X, loss_vq = model.forward(X)
-                    loss_vae = model.loss_function(X_hat, X, loss_vq)
+                (X, Y, _) = batch
+                for x in (X, Y):
+                    x = x.to(device)
+                    x_hat, x, loss_vq = model.forward(x)
+                    loss_vae = model.loss_function(x_hat, x, loss_vq)
                     loss = loss_vae["loss"].mean() # Overall loss
                     loss_rec = loss_vae["Reconstruction_Loss"]
                     loss_vq = loss_vae["VQ_Loss"].mean()
@@ -188,19 +190,22 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    test_metric_calculator = uc.TestMetricCalculator(
-        n_samples=2*len(datasets['test']), y_transform=normalise_y, x_transform=normalise_x
-    )
+    test_metric_calculator = uc.TestMetricCalculator(n_samples=2*len(datasets['test']))
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
-            for j, X in enumerate(batch):
-                X = X.to(device)
-                X_hat, X, loss_vq = model.forward(X)
-                loss_vae = model.loss_function(X_hat, X, loss_vq)
+            (X, Y, bg_mask) = batch
+            for j, x in enumerate((X, Y)):
+                x = x.to(device)
+                x_hat, x, loss_vq = model.forward(x)
+                loss_vae = model.loss_function(x_hat, x, loss_vq)
                 if j == 0: # invert transform depends on whether X or Y is reconstructed
-                    test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_x)
+                    test_metric_calculator(
+                        Y=x, Y_hat=x_hat, Y_transform=normalise_x, Y_mask=bg_mask
+                    )
                 else:
-                    test_metric_calculator(Y=X, Y_hat=X_hat, y_transform=normalise_y)
+                    test_metric_calculator(
+                        Y=x, Y_hat=x_hat, Y_transform=normalise_y, Y_mask=bg_mask
+                    )
                 loss = loss_vae["loss"].mean() # Overall loss
                 loss_rec = loss_vae["Reconstruction_Loss"]
                 loss_vq = loss_vae["VQ_Loss"].mean()

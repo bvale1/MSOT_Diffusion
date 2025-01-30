@@ -5,21 +5,31 @@ from dataloader import load_sim
 # This is a script to get the min, max, mean, and std of an entire dataset
 # (normalisation parameters) and pack it into a h5 and json file
 
+def delete_group_from_h5(file_path, group_name):
+    file_path = os.path.join(file_path, 'data.h5')
+    with h5py.File(file_path, 'r+') as f:
+        if group_name in f:
+            del f[group_name]
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, 
-        #default='20241208_ImageNet_MSOT_Dataset'
-        default='20250127_digimouse_MSOT_Dataset'
+        default='20250130_ImageNet_MSOT_Dataset'
+        #default='20250127_digimouse_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
-        #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
+        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
         #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
-        default = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
+        #default = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
+    parser.add_argument(
+        '--delete_failed_samples', action='store_true', default=False, 
+        help='delete samples that do not pass the vibe check (sanity checks)'
+    )
     
     args = parser.parse_args()
     
@@ -29,7 +39,8 @@ if __name__ == '__main__':
         'git_hash': args.git_hash,
         'n_images': 0,
         'dx' : 0.0001,
-        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        'train_val_test_split' : [0.8, 0.1, 0.1],
+        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
             'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
@@ -98,24 +109,35 @@ if __name__ == '__main__':
     for i, sim in enumerate(non_empty_sim_dirs):
         logging.info(f'Loading {sim} ({i+1}/{len(non_empty_sim_dirs)})')
         [data, cfg] = load_sim(sim)
-        sim = sim.replace('\\', '/')
+        sim_name = sim.replace('\\', '/')
         
         if i == 0:
             dataset_cfg['dx'] = cfg['dx']
         
         for j, image in enumerate(data.keys()):
-            group_name = (sim.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
+            group_name = (sim_name.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
             
             if ('p0_tr' not in data[image].keys()):
                 logging.info(f'p0_tr not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
                 continue
             if ('Phi' not in data[image].keys()):
                 logging.info(f'Phi not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
                 continue
             if ('mu_a' not in data[image].keys()):
                 logging.info(f'mu_a not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
                 continue
-            
+            if ('bg_mask' not in data[image].keys()):
+                logging.info(f'bg_mask not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
+                continue
+                
             # X is the pressure image divided by the laser energy (laser energy normalisation)
             X = data[image]['p0_tr'] / cfg['LaserEnergy'][j]
             # corrected_image is the fluence (Phi) corrected image
@@ -131,11 +153,15 @@ if __name__ == '__main__':
                 logging.info(f'{group_name} absorption coefficient less than zero, skipping sample')
                 logging.info(f'np.min(mu_a)={np.min(mu_a)}, wavelength={cfg["wavelengths"]}')
                 logging.info(f'{100*np.sum(mu_a < 0)/np.prod(mu_a.shape)}% less than zero')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
                 continue
             if np.any(mu_a < mu_a[0,0]): # sanity checking
                 logging.info(f'{group_name} absorption coefficient less than coupling medium, skipping sample')
                 logging.info(f'np.min(mu_a)={np.min(mu_a)}, np.min(mu_a[0,0])={np.min(mu_a[0,0])}, wavelength={cfg["wavelengths"]}')
                 logging.info(f'{100*np.sum(mu_a < mu_a[0,0])/np.prod(mu_a.shape)}% less than zero')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
                 continue
                 
             dataset_cfg['normalisation_X']['max'] = max(dataset_cfg['normalisation_X']['max'], float(np.max(X)))
@@ -154,6 +180,7 @@ if __name__ == '__main__':
                 image_group.create_dataset('X', data=X, dtype=np.float32)
                 image_group.create_dataset('corrected_image', data=corrected_image, dtype=np.float32)
                 image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
+                image_group.create_dataset('bg_mask', data=data[image]['bg_mask'], dtype=bool)
                 
     ssr_X = 0.0
     ssr_corrected_image = 0.0

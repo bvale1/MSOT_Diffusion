@@ -112,7 +112,7 @@ if __name__ == '__main__':
         total_train_loss = 0
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
-        for i, (X, Y) in enumerate(dataloaders['train']):
+        for i, (X, Y, _) in enumerate(dataloaders['train']):
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         with torch.no_grad():
-            for i, (X, Y) in enumerate(dataloaders['val']):
+            for i, (X, Y, _) in enumerate(dataloaders['val']):
                 X = X.to(device)
                 Y = Y.to(device)
                 Y_hat = model(X)
@@ -177,12 +177,14 @@ if __name__ == '__main__':
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
     test_metric_calculator = uc.TestMetricCalculator(n_samples=len(datasets['test']))
     with torch.no_grad():
-        for i, (X, Y) in enumerate(dataloaders['test']):
+        for i, (X, Y, bg_mask) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
             Y_hat = model(X)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
-            test_metric_calculator(Y=Y, Y_hat=Y_hat, y_transform=normalise_y)
+            test_metric_calculator(
+                Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
+            )
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )
@@ -207,9 +209,9 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0) = datasets['test'][0]
-        (X_best, Y_best) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
+        (X_0, Y_0, _) = datasets['test'][0]
+        (X_best, Y_best, _) = datasets['test'][best_and_worst_examples['best']['index']]
+        (X_worst, Y_worst, _) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
         with torch.no_grad():
