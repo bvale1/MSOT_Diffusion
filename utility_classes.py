@@ -378,11 +378,11 @@ class TestMetricCalculator():
     # through in batches
     def __init__(self) -> None:
         self.metrics = {
-            'mean_RMSE' : [],
-            'mean_MAE' : [],
-            'mean_Rel_Err' : [],
-            'mean_PSNR' : [],
-            'mean_SSIM' : []
+            'RMSE' : [],
+            'MAE' : [],
+            'Rel_Err' : [],
+            'PSNR' : [],
+            'SSIM' : []
         }        
     
     def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
