@@ -211,7 +211,7 @@ if __name__ == '__main__':
     total_test_loss_rec = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    test_metric_calculator = uc.TestMetricCalculator(n_samples=len(datasets['test']))
+    test_metric_calculator = uc.TestMetricCalculator()
     if args.use_autoencoder_dir:
         image_test_iter = iter(image_dataloaders['test'])
     with torch.no_grad():

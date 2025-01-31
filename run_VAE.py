@@ -190,7 +190,7 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    test_metric_calculator = uc.TestMetricCalculator(n_samples=2*len(datasets['test']))
+    test_metric_calculator = uc.TestMetricCalculator()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             (X, Y, bg_mask) = batch
