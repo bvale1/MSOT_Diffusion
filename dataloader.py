@@ -3,10 +3,14 @@ import matplotlib.pyplot as plt
 import h5py, json, logging, os
 import torch
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from typing import Union
 
-def load_sim(path : str, args='all', verbose=False) -> list:
+def load_sim(path : str,
+             args : Union[str, tuple, list]='all',
+             verbose : bool=False, 
+             delete_incomplete_samples : bool=False) -> list:
     data = {}
-    with h5py.File(os.path.join(path, 'data.h5'), 'r') as f:
+    with h5py.File(os.path.join(path, 'data.h5'), 'r+') as f:
         images = list(f.keys())
         if verbose:
             print(f'images found {images}')
@@ -19,7 +23,14 @@ def load_sim(path : str, args='all', verbose=False) -> list:
             for arg in args:
                 if arg not in f[image].keys():
                     print(f'arg {arg} not found in {image}')
-                    pass
+                    if delete_incomplete_samples:
+                        try:
+                            print(f'deleting {image} from {path}')
+                            del f[image]
+                            del data[image]
+                        except Exception as e:
+                            print(f'could not delete {image} {e}')
+                    continue
                 # include 90 deg anticlockwise rotation
                 elif arg != 'sensor_data':
                     data[image][arg] = np.rot90(
@@ -33,6 +44,13 @@ def load_sim(path : str, args='all', verbose=False) -> list:
         
     return [data, cfg]
 
+
+def delete_group_from_h5(file_path, group_name):
+    file_path = os.path.join(file_path, 'data.h5')
+    with h5py.File(file_path, 'r+') as f:
+        if group_name in f:
+            del f[group_name]
+            
 
 def heatmap(img, 
             title='', 

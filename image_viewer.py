@@ -28,7 +28,7 @@ class ImageViewer(QWidget):
         print('gathering images...')
         for i, sim_dir in enumerate(sim_dirs):
             print(f'{i+1}/{len(sim_dirs)} {sim_dir}')
-            [data, self.cfg] = load_sim(sim_dir, args='all', verbose=False)
+            [data, self.cfg] = load_sim(sim_dir, args='all', verbose=True, delete_incomplete_samples=False)
             keys = list(data.keys())
             if len(keys) != 0:
                 if self.load_all:

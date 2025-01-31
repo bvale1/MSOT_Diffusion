@@ -1,15 +1,9 @@
 import numpy as np
 import h5py, json, os, logging, glob, argparse
-from dataloader import load_sim
+from dataloader import load_sim, delete_group_from_h5
 
 # This is a script to get the min, max, mean, and std of an entire dataset
 # (normalisation parameters) and pack it into a h5 and json file
-
-def delete_group_from_h5(file_path, group_name):
-    file_path = os.path.join(file_path, 'data.h5')
-    with h5py.File(file_path, 'r+') as f:
-        if group_name in f:
-            del f[group_name]
             
 def square_centre_crop(image : np.ndarray, size : int) -> np.ndarray:
     width, height = image.shape[-2:]

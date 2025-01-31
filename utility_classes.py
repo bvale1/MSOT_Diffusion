@@ -391,17 +391,19 @@ class TestMetricCalculator():
             Y_hat.shape {Y_hat.shape}"
         assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
         b = Y.shape[0]
-        Y = Y.detach().cpu().view(b, -1)
-        Y_hat = Y_hat.detach().cpu().view(b, -1)
+        Y = Y.detach().cpu()
+        Y_hat = Y_hat.detach().cpu()
+        if Y_transform:
+            Y = Y_transform.inverse(Y)
+            Y_hat = Y_transform.inverse(Y_hat)
+        Y = Y.view(b, -1)
+        Y_hat = Y_hat.view(b, -1)
         if type(Y_mask) == torch.Tensor:
             Y_mask = Y_mask.detach().cpu().view(b, -1)
             Y_mask_sum = Y_mask.sum(dim=1, keepdim=True)
-            Y_max = Y*Y_mask.amax(dim=1, keepdim=True)
+            Y_max = (Y*Y_mask).amax(dim=1, keepdim=True)
         else:
             Y_max = Y.amax(dim=1, keepdim=True)
-        if Y_transform:
-            Y = Y_transform.inverse(Y)
-            Y_hat = Y_transform.inverse(Y_hat)        
         
         if type(Y_mask) == torch.Tensor:
             RMSE = torch.sqrt((((Y - Y_hat)*Y_mask)**2).sum(dim=1, keepdim=True) / Y_mask_sum)
