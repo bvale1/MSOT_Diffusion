@@ -108,17 +108,26 @@ def create_dataloaders(args, model_name) -> tuple:
             )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
-        transforms.Resize((args.image_size, args.image_size)),
+        transforms.Resize(
+            (args.image_size, args.image_size), 
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
         normalise_x
     ])
     y_transform = transforms.Compose([
         ReplaceNaNWithZero(),
-        transforms.Resize((args.image_size, args.image_size)),
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
         normalise_y
     ])
     mask_transform = transforms.Compose([
         ReplaceNaNWithZero(),
-        transforms.Resize((args.image_size, args.image_size), interpolation=0)
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.NEAREST
+        )
     ])
     
     datasets = {

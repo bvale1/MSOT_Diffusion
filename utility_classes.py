@@ -308,42 +308,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             bg_mask = self.mask_transform(bg_mask)
         
         return (X, Y, bg_mask)
-
-'''
-class ReconstructAbsorbtionDatasetJanek(ReconstructAbsorbtionDataset):
     
-    def __init__(self, data_path : str, 
-                 split : str='train', 
-                 gt_type : str='mu_a',):
-        self.path = data_path # don't call super because dataset doesn't have a config file 
-        
-        assert split in ['train', 'val', 'test'], f'split {split} not recognised, \
-            must be "train", "val" or "test"'
-        self.split = split
-        
-        assert gt_type in ['mu_a', 'fluence_correction'], f'gt_type {gt_type} \ 
-        not recognised, must be "mu_a" or "fluence_correction"'
-        self.gt_type = gt_type
-
-        match split:
-            case 'train', 'val':
-                npz_dirs = glob.glob(os.path.join(
-                    data_path, 'training_data_1/**/*.npz'
-                ), recursive=True)
-                npz_dirs += glob.glob(os.path.join(
-                    data_path, 'training_data_2/**/*.npz'
-                ), recursive=True)
-                phantoms = [npz_file.split('/')[-1] for npz_file in npz_files]
-                phantoms = [phantom.split('_')[0] for phantom in phantoms]
-            case 'val':
-                pass
-            case 'test':
-                npz_files = glob.glob(os.path.join(
-                    data_path, 'test_data/**/*.npz'
-                ), recursive=True)
-
-        self.samples = 
-'''    
 
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,
@@ -411,14 +376,13 @@ class CheckpointSaver:
 class TestMetricCalculator():
     # class to evaluate test metrics over the entire test set, which is passed
     # through in batches
-    def __init__(self, n_samples : int) -> None:
-        self.n_samples = n_samples
+    def __init__(self) -> None:
         self.metrics = {
-            'mean_RMSE' : 0.0,
-            'mean_MAE' : 0.0,
-            'mean_Rel_Err' : 0.0,
-            'mean_PSNR' : 0.0,
-            'mean_SSIM' : 0.0
+            'mean_RMSE' : [],
+            'mean_MAE' : [],
+            'mean_Rel_Err' : [],
+            'mean_PSNR' : [],
+            'mean_SSIM' : []
         }        
     
     def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
@@ -426,47 +390,61 @@ class TestMetricCalculator():
         assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
             Y_hat.shape {Y_hat.shape}"
         assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
-        
-        Y = Y.detach().cpu()
-        Y_hat = Y_hat.detach().cpu()
         b = Y.shape[0]
+        Y = Y.detach().cpu().view(b, -1)
+        Y_hat = Y_hat.detach().cpu().view(b, -1)
         if type(Y_mask) == torch.Tensor:
-            Y = Y[Y_mask].view(b, -1)
-            Y_hat = Y_hat[Y_mask].view(b, -1)
+            Y_mask = Y_mask.detach().cpu().view(b, -1)
+            Y_mask_sum = Y_mask.sum(dim=1, keepdim=True)
+            Y_max = Y*Y_mask.amax(dim=1, keepdim=True)
         else:
-            Y = Y.view(b, -1)
-            Y_hat = Y_hat.view(b, -1)
+            Y_max = Y.amax(dim=1, keepdim=True)
         if Y_transform:
             Y = Y_transform.inverse(Y)
-            Y_hat = Y_transform.inverse(Y_hat)
-        Y_max = Y.amax(dim=1, keepdim=True)
+            Y_hat = Y_transform.inverse(Y_hat)        
         
-        RMSE = torch.sqrt(
-            torch.mean((Y - Y_hat)**2, dim=1, keepdim=True)
-        )
+        if type(Y_mask) == torch.Tensor:
+            RMSE = torch.sqrt((((Y - Y_hat)*Y_mask)**2).sum(dim=1, keepdim=True) / Y_mask_sum)
+            MAE = torch.abs((Y - Y_hat)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            Rel_Err = 100 * torch.abs((Y - Y_hat)*Y_mask/Y).sum(dim=1, keepdim=True) / Y_mask_sum
+            mean_Y = (Y*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            mean_Y_hat = (Y_hat*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            var_Y = (((Y - mean_Y)**2)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            var_Y_hat = (((Y_hat - mean_Y_hat)**2)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            cov_Y_Y_hat = ((Y - mean_Y)*(Y_hat - mean_Y_hat)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+        else:
+            RMSE = torch.sqrt(torch.mean((Y - Y_hat)**2, dim=1, keepdim=True))
+            MAE = torch.mean(torch.abs(Y - Y_hat), dim=1, keepdim=True)
+            Rel_Err = torch.mean(100 * torch.abs(Y - Y_hat) / Y, dim=1, keepdim=True)
+            mean_Y = torch.mean(Y, dim=1, keepdim=True)
+            mean_Y_hat = torch.mean(Y_hat, dim=1, keepdim=True)
+            var_Y = torch.var(Y, dim=1, keepdim=True)
+            var_Y_hat = torch.var(Y_hat, dim=1, keepdim=True)
+            cov_Y_Y_hat = torch.mean(
+                (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=1, keepdim=True
+            )
         PSNR = 20*torch.log10(Y_max / RMSE)
-        MAE = torch.mean(torch.abs(Y - Y_hat), dim=1, keepdim=True)
-        Rel_Err = torch.mean(
-            100 * torch.abs(Y - Y_hat) / Y, dim=1, keepdim=True
-        )
-        
-        mean_Y = torch.mean(Y, dim=1, keepdim=True)
-        mean_Y_hat = torch.mean(Y_hat, dim=1, keepdim=True)
         c1 = (0.01 * Y_max)**2
         c2 = (0.03 * Y_max)**2
-        var_Y = torch.var(Y, dim=1, keepdim=True)
-        var_Y_hat = torch.var(Y_hat, dim=1, keepdim=True)
-        cov_Y_Y_hat = torch.mean(
-            (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=1, keepdim=True
-        )
         SSIM = (2*mean_Y*mean_Y_hat + c1)*(2*cov_Y_Y_hat + c2) / \
             ((mean_Y**2 + mean_Y_hat**2 + c1)*(var_Y + var_Y_hat + c2))
         
-        self.metrics['mean_RMSE'] += RMSE.sum().item() / self.n_samples
-        self.metrics['mean_MAE'] += MAE.sum().item() / self.n_samples
-        self.metrics['mean_Rel_Err'] += Rel_Err.sum().item() / self.n_samples
-        self.metrics['mean_PSNR'] += PSNR.sum().item() / self.n_samples
-        self.metrics['mean_SSIM'] += SSIM.sum().item() / self.n_samples
+        self.metrics['RMSE'] += RMSE.squeeze().tolist()
+        self.metrics['MAE'] += MAE.squeeze().tolist()
+        self.metrics['Rel_Err'] += Rel_Err.squeeze().tolist()
+        self.metrics['PSNR'] += PSNR.squeeze().tolist()
+        self.metrics['SSIM'] += SSIM.squeeze().tolist()
                 
     def get_metrics(self) -> dict:
-        return self.metrics
+        return {
+            'mean_RMSE' : np.mean(np.asarray(self.metrics['RMSE'])),
+            'std_RMSE' : np.std(np.asarray(self.metrics['RMSE'])),
+            'mean_MAE' : np.mean(np.asarray(self.metrics['MAE'])),
+            'std_MAE' : np.std(np.asarray(self.metrics['MAE'])),
+            'mean_Rel_Err' : np.mean(np.asarray(self.metrics['Rel_Err'])),
+            'std_Rel_Err' : np.std(np.asarray(self.metrics['Rel_Err'])),
+            'mean_PSNR' : np.mean(np.asarray(self.metrics['PSNR'])),
+            'std_PSNR' : np.std(np.asarray(self.metrics['PSNR'])),
+            'mean_SSIM' : np.mean(np.asarray(self.metrics['SSIM'])),
+            'std_SSIM' : np.std(np.asarray(self.metrics['SSIM']))
+        }
