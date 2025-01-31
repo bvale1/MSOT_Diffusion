@@ -10,6 +10,17 @@ def delete_group_from_h5(file_path, group_name):
     with h5py.File(file_path, 'r+') as f:
         if group_name in f:
             del f[group_name]
+            
+def square_centre_crop(image : np.ndarray, size : int) -> np.ndarray:
+    width, height = image.shape[-2:]
+    if width < size or height < size:
+        print('Image is smaller than crop size, returning original image')
+        return image
+    else:
+        x = (width - size) // 2
+        y = (height - size) // 2
+        image = image[..., x:x+size, y:y+size]
+        return image
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
@@ -39,6 +50,7 @@ if __name__ == '__main__':
         'git_hash': args.git_hash,
         'n_images': 0,
         'dx' : 0.0001,
+        'crop_size' : 256,
         'train_val_test_split' : [0.8, 0.1, 0.1],
         #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
@@ -111,8 +123,9 @@ if __name__ == '__main__':
         [data, cfg] = load_sim(sim)
         sim_name = sim.replace('\\', '/')
         
-        if i == 0:
+        if i == 0: # assume all simulations have the same dx and square crop size
             dataset_cfg['dx'] = cfg['dx']
+            dataset_cfg['crop_size'] = cfg['crop_size']
         
         for j, image in enumerate(data.keys()):
             group_name = (sim_name.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
@@ -149,6 +162,10 @@ if __name__ == '__main__':
             # the fluence corrected image
             mu_a = data[image]['mu_a']
             
+            bg_mask = square_centre_crop(
+                np.squeeze(data[image]['bg_mask']), dataset_cfg['crop_size']
+            )
+            
             if np.any(mu_a < 0): # sanity checking
                 logging.info(f'{group_name} absorption coefficient less than zero, skipping sample')
                 logging.info(f'np.min(mu_a)={np.min(mu_a)}, wavelength={cfg["wavelengths"]}')
@@ -180,7 +197,7 @@ if __name__ == '__main__':
                 image_group.create_dataset('X', data=X, dtype=np.float32)
                 image_group.create_dataset('corrected_image', data=corrected_image, dtype=np.float32)
                 image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
-                image_group.create_dataset('bg_mask', data=data[image]['bg_mask'], dtype=bool)
+                image_group.create_dataset('bg_mask', data=bg_mask, dtype=bool)
                 
     ssr_X = 0.0
     ssr_corrected_image = 0.0

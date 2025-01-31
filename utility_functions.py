@@ -116,19 +116,26 @@ def create_dataloaders(args, model_name) -> tuple:
         transforms.Resize((args.image_size, args.image_size)),
         normalise_y
     ])
+    mask_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize((args.image_size, args.image_size), interpolation=0)
+    ])
     
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='train', data_space='image',
-            X_transform=x_transform, Y_transform=y_transform
+            X_transform=x_transform, Y_transform=y_transform, 
+            mask_transform=mask_transform
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='val', data_space='image',
-            X_transform=x_transform, Y_transform=y_transform
+            X_transform=x_transform, Y_transform=y_transform, 
+            mask_transform=mask_transform
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='test', data_space='image',
-            X_transform=x_transform, Y_transform=y_transform
+            X_transform=x_transform, Y_transform=y_transform, 
+            mask_transform=mask_transform
         ),
     }
     dataloaders = {

@@ -253,10 +253,12 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                  gt_type : str='mu_a',
                  data_space : str='image',
                  X_transform=None,
-                 Y_transform=None) -> None:
+                 Y_transform=None,
+                 mask_transform=None) -> None:
         super(SyntheticReconstructAbsorbtionDataset, self).__init__(data_path)
         self.X_transform = X_transform
         self.Y_transform = Y_transform
+        self.mask_transform = mask_transform
         
         assert split in ['train', 'val', 'test'], f'split {split} not recognised, \
             must be "train", "val" or "test"'
@@ -296,10 +298,14 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             X = X.unsqueeze(0)
         if Y.dim()==2:
             Y = Y.unsqueeze(0)
+        if bg_mask.dim()==2:
+            bg_mask = bg_mask.unsqueeze(0)
         if self.X_transform:
             X = self.X_transform(X)
         if self.Y_transform:
             Y = self.Y_transform(Y)
+        if self.mask_transform:
+            bg_mask = self.mask_transform(bg_mask)
         
         return (X, Y, bg_mask)
 
