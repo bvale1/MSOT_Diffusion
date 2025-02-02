@@ -70,6 +70,7 @@ if __name__ == '__main__':
                 decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
                 in_channels=channels, classes=1, 
             )
+            uf.reset_weights(model)
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
                 in_channels=1, out_channels=1,
