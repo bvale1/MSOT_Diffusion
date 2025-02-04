@@ -243,7 +243,7 @@ class ReconstructAbsorbtionDataset(Dataset):
             if X_cbar_unit:
                 cbars[-1].set_label(X_cbar_unit)        
         elif type(mask) == torch.Tensor:
-            mask.detach().cpu().squeeze().numpy()
+            mask = mask.detach().cpu().squeeze().numpy()
             img.append(axes[1, 2].imshow(
                 mask, cmap='binary', origin='lower', extent=extent
             ))
