@@ -149,15 +149,15 @@ def create_dataloaders(args, model_name) -> tuple:
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=20
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 
-            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
         ),
         # backpropagation not performed on the test set so batch size can be larger
         'test' : DataLoader(
-            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
         )
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
@@ -242,6 +242,7 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
                        Y : torch.Tensor,
                        Y_hat : torch.Tensor,
                        X_hat : torch.Tensor=None, # for VAEs
+                       mask : torch.Tensor=None,
                        X_transform=None, 
                        Y_transform=None,
                        X_cbar_unit : str=r'Pa J$^{-1}$',
@@ -250,7 +251,9 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
                        **kwargs) -> None:
     if type(X_hat) != torch.Tensor:
         X_hat = [None]*len(X)
-    assert len(X) == len(Y) == len(Y_hat) == len(X_hat), 'Input tensors must \
+    if type(mask) != torch.Tensor:
+        mask = [None]*len(X)
+    assert len(X) == len(Y) == len(Y_hat) == len(X_hat) == len(mask), 'Input tensors must \
         have the same length.'
     if not fig_titles:
         fig_titles = [f'Example {i}' for i in range(len(X))]
@@ -260,7 +263,7 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
     
     for i in range(len(X)):
         (fig, _) = dataset.plot_comparison(
-            X[i], Y[i], Y_hat[i], X_hat=X_hat[i],
+            X[i], Y[i], Y_hat[i], X_hat=X_hat[i], mask=mask[i],
             X_transform=X_transform, Y_transform=Y_transform,
             X_cbar_unit=X_cbar_unit, Y_cbar_unit=Y_cbar_unit, **kwargs
         )

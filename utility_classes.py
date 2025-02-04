@@ -130,6 +130,7 @@ class ReconstructAbsorbtionDataset(Dataset):
                         Y : torch.Tensor,
                         Y_hat : torch.Tensor,
                         X_hat : torch.Tensor=None, # for autoencoders
+                        mask : torch.Tensor=None,
                         X_transform=None,
                         Y_transform=None,
                         X_cbar_unit : str=None,
@@ -240,7 +241,16 @@ class ReconstructAbsorbtionDataset(Dataset):
             axes[1, 2].set_xlabel('x (mm)')
             axes[1, 2].set_ylabel('z (mm)')
             if X_cbar_unit:
-                cbars[-1].set_label(X_cbar_unit)
+                cbars[-1].set_label(X_cbar_unit)        
+        elif type(mask) == torch.Tensor:
+            mask.detach().cpu().squeeze().numpy()
+            img.append(axes[1, 2].imshow(
+                mask, cmap='binary', origin='lower', extent=extent
+            ))
+            axes[1, 2].set_title('Mask')
+            axes[1, 2].set_xlabel('x (mm)')
+            axes[1, 2].set_ylabel('z (mm)')
+            
         
         fig.tight_layout()
         return (fig, axes)

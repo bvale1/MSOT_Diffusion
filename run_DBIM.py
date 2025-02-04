@@ -250,11 +250,15 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0) = datasets['test'][0]
-        (X_best, Y_best) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
-        X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
-        Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)
+        (X_0, Y_0, mask_0) = datasets['test'][0]
+        (X_1, Y_1, mask_1) = datasets['test'][1]
+        (X_2, Y_2, mask_2) = datasets['test'][2]
+        (X_best, Y_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']]
+        (X_worst, Y_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
+        X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
+        Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
+        mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
+        mask = torch.stack((mask_0, mask_best, mask_worst), dim=0).to(device)
         with torch.no_grad():
             Y_hat = diffusion.sample(X, x_cond=X)
         if args.use_autoencoder_dir:
@@ -267,7 +271,7 @@ if __name__ == '__main__':
             Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)            
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
-            X_transform=normalise_x, Y_transform=normalise_y,
+            mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example_best', 'test_example_worst']
         )
