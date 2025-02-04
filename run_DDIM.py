@@ -292,7 +292,8 @@ if __name__ == '__main__':
             datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
-            fig_titles=['test_example0', 'test_example_best', 'test_example_worst']
+            fig_titles=['test_example0', 'test_example1', 'test_example2',
+                        'test_example_best', 'test_example_worst']
         )
         
     if args.wandb_log:

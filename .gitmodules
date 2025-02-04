@@ -1,3 +1,6 @@
 [submodule "end_to_end_phantom_QPAT"]
 	path = end_to_end_phantom_QPAT
 	url = https://github.com/bvale1/end_to_end_phantom_QPAT
+[submodule "denoising-diffusion-pytorch"]
+	path = denoising-diffusion-pytorch
+	url = https://github.com/bvale1/denoising-diffusion-pytorch
