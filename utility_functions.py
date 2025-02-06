@@ -12,6 +12,18 @@ from typing import Callable, Union
 from utility_classes import *
 
 
+def square_centre_crop(image : np.ndarray, size : int) -> np.ndarray:
+    width, height = image.shape[-2:]
+    if width < size or height < size:
+        print('Image is smaller than crop size, returning original image')
+        return image
+    else:
+        x = (width - size) // 2
+        y = (height - size) // 2
+        image = image[..., x:x+size, y:y+size]
+        return image
+    
+
 def get_best_and_worst(loss : torch.Tensor, 
                        best_and_worst_examples : dict, 
                        arg0_idx : int) -> dict:
@@ -257,10 +269,7 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
         have the same length.'
     if not fig_titles:
         fig_titles = [f'Example {i}' for i in range(len(X))]
-    
-    Y = Y.clone() * 1e-2 # convert from cm^-1 to m^-1
-    Y_hat = Y_hat.clone() * 1e-2
-    
+        
     for i in range(len(X)):
         (fig, _) = dataset.plot_comparison(
             X[i], Y[i], Y_hat[i], X_hat=X_hat[i], mask=mask[i],

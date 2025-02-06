@@ -12,6 +12,8 @@ from typing import Union
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
+from utility_functions import square_centre_crop
+
 
 class ImageViewer(QWidget):
     
@@ -50,7 +52,8 @@ class ImageViewer(QWidget):
                        r'Scattering $\mu_{s}$ (m$^{-1}$)',
                        r'Fluence $\Phi$ (J m$^{-2}$)', 
                        r'Initial pressure $p_{0}$ (Pa)',
-                       r'Reconstrction $\hat{p}_{0}$ (Pa)']
+                       r'Reconstrction $\hat{p}_{0}$ (Pa)',
+                       'Mask']
         self.plot()
     
     def initUI(self):
@@ -84,10 +87,12 @@ class ImageViewer(QWidget):
             print(f'data.keys() {data.keys()}')
         images = []
         try:        
-            images = [self.data[image_name]['mu_a'], self.data[image_name]['mu_s'], 
-                      self.data[image_name]['Phi'],
-                      self.data[image_name]['mu_a']*self.data[image_name]['Phi'],
-                      self.data[image_name]['p0_tr']]
+            images = np.asarray([self.data[image_name]['mu_a'],
+                                 self.data[image_name]['mu_s'], 
+                                 self.data[image_name]['Phi'],
+                                 self.data[image_name]['mu_a']*self.data[image_name]['Phi'],
+                                 self.data[image_name]['p0_tr'],
+                                 square_centre_crop(self.data[image_name]['bg_mask'], self.cfg['crop_size'])])
             title = f'{image_name} in {sim_dir}'
             self.canvas.figure.clear()
             self.ImageViewerHeatmap(
@@ -97,7 +102,7 @@ class ImageViewer(QWidget):
         except Exception as e:
             print(f'failed to load {image_name} from {sim_dir}\n{e}')
         
-    def ImageViewerHeatmap(self, img, 
+    def ImageViewerHeatmap(self, img : np.ndarray, 
                            title='', 
                            cmap='binary_r', 
                            vmax=None,
@@ -113,11 +118,6 @@ class ImageViewer(QWidget):
         dx = dx * 1e3 # [m] -> [mm]
         
         frames = []
-        
-        # convert to numpy for plotting
-        if type(img) == torch.Tensor:
-            img = img.detach().numpy()
-            
         shape = np.shape(img)
         if sharescale or len(shape) == 2:
             mask = np.logical_not(np.isnan(img))
@@ -160,7 +160,7 @@ class ImageViewer(QWidget):
                     cbar = self.ax.figure.colorbar(frames[idx], cax=cbar_ax, orientation='vertical')
                     if cbar_label:
                         cbar.set_label=cbar_label
-
+        
         self.ax.figure.subplots_adjust(right=0.8)
         
         if sharescale:
@@ -177,6 +177,7 @@ class ImageViewer(QWidget):
 if __name__ == '__main__':
     root_dir = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
     root_dir = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
+    root_dir = 'E:\\ImageNet_MSOT_simulations'
 
     h5_dirs = glob.glob(os.path.join(root_dir, '**/*.h5'), recursive=True)
     json_dirs = glob.glob(os.path.join(root_dir, '**/*.json'), recursive=True)
@@ -188,5 +189,5 @@ if __name__ == '__main__':
     print(f'Found {len(sim_dirs)} simulations')    
     
     app = QApplication([])
-    viewer = ImageViewer(sim_dirs, load_all=True, start_idx=360)
+    viewer = ImageViewer(list(sim_dirs)[:1], load_all=False, start_idx=0)
     app.exec_()

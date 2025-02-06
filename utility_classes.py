@@ -5,12 +5,11 @@ import logging
 import h5py
 import json
 import os
-import glob
 import wandb
 from torch.utils.data import Dataset
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abc import abstractmethod
-from typing import Union
+from typing import Union, Literal
 import torch.nn as nn
 
 
@@ -159,6 +158,8 @@ class ReconstructAbsorbtionDataset(Dataset):
         Y = Y.squeeze().numpy()
         Y_hat = Y_hat.squeeze().numpy()
         X_hat = X_hat.squeeze().numpy() if type(X_hat)==torch.Tensor else None
+        Y += 1e-2 # convert mu_a from m^-1 to cm^-1
+        Y_hat += 1e-2
         v_max_X = max(np.max(X), np.max(X_hat)) if type(X_hat)==np.ndarray else np.max(X)
         v_min_X = min(np.min(X), np.min(X_hat)) if type(X_hat)==np.ndarray else np.min(X)
         v_min_Y = min(np.min(Y), np.min(Y_hat))
@@ -222,6 +223,7 @@ class ReconstructAbsorbtionDataset(Dataset):
             color='tab:red', linestyle='dashed'
         )
         axes[1, 1].set_title('Line profile')
+        axes[1, 1].set_box_aspect(1)
         axes[1, 1].set_xlabel('x (mm)')
         axes[1, 1].set_ylabel(Y_cbar_unit)
         axes[1, 1].grid(True)
@@ -259,28 +261,19 @@ class ReconstructAbsorbtionDataset(Dataset):
 class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
     
     def __init__(self, data_path : str,
-                 split : str='train',
-                 gt_type : str='mu_a',
-                 data_space : str='image',
+                 split : Literal['train', 'val', 'test']='train',
+                 gt_type : Literal['fluence_correction', 'mu_a']='mu_a',
+                 data_space : Literal['image','latent']='image',
                  X_transform=None,
                  Y_transform=None,
                  mask_transform=None) -> None:
         super(SyntheticReconstructAbsorbtionDataset, self).__init__(data_path)
+        self.split = split
+        self.gt_type = gt_type
+        self.data_space = data_space
         self.X_transform = X_transform
         self.Y_transform = Y_transform
-        self.mask_transform = mask_transform
-        
-        assert split in ['train', 'val', 'test'], f'split {split} not recognised, \
-            must be "train", "val" or "test"'
-        self.split = split
-        
-        assert gt_type in ['fluence_correction', 'mu_a'], f'gt_type {gt_type} \
-            not recognised, must be "fluence_correction" or "mu_a"'
-        self.gt_type = gt_type
-        
-        assert data_space in ['image', 'latent'], f'data_space {data_space} \
-            not recognised, must be "image" or "latent"'
-        self.data_space = data_space
+        self.mask_transform = mask_transform        
         
         match gt_type:
             case 'fluence_correction':

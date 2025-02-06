@@ -1,32 +1,22 @@
 import numpy as np
 import h5py, json, os, logging, glob, argparse
 from dataloader import load_sim, delete_group_from_h5
+from utility_functions import square_centre_crop
 
 # This is a script to get the min, max, mean, and std of an entire dataset
 # (normalisation parameters) and pack it into a h5 and json file
-            
-def square_centre_crop(image : np.ndarray, size : int) -> np.ndarray:
-    width, height = image.shape[-2:]
-    if width < size or height < size:
-        print('Image is smaller than crop size, returning original image')
-        return image
-    else:
-        x = (width - size) // 2
-        y = (height - size) // 2
-        image = image[..., x:x+size, y:y+size]
-        return image
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, 
-        default='20250130_ImageNet_MSOT_Dataset'
-        #default='20250127_digimouse_MSOT_Dataset'
+        #default='20250130_ImageNet_MSOT_Dataset'
+        default='20250206_digimouse_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
-        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
+        #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
+        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
         #default = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
     )
     parser.add_argument('--output_dir', type=str, default='')
@@ -45,8 +35,8 @@ if __name__ == '__main__':
         'n_images': 0,
         'dx' : 0.0001,
         'crop_size' : 256,
-        'train_val_test_split' : [0.8, 0.1, 0.1],
-        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        #'train_val_test_split' : [0.8, 0.1, 0.1],
+        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
             'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },

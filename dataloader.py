@@ -34,7 +34,7 @@ def load_sim(path : str,
                 # include 90 deg anticlockwise rotation
                 elif arg != 'sensor_data':
                     data[image][arg] = np.rot90(
-                        np.array(f[image][arg][()]), k=1, axes=(-2,-1)
+                        np.squeeze(f[image][arg][()]), k=1, axes=(-2,-1)
                     ).copy()
                 else:
                     data[image][arg] = np.array(f[image][arg][()])
