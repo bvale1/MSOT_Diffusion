@@ -6,6 +6,7 @@ import h5py
 import json
 import os
 import wandb
+import glob
 from torch.utils.data import Dataset
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abc import abstractmethod
@@ -259,7 +260,8 @@ class ReconstructAbsorbtionDataset(Dataset):
     
     
 class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
-    
+    # works for both image and latent space data, as well as synthetic 
+    # images of digimouse and ImageNet digital phantoms
     def __init__(self, data_path : str,
                  split : Literal['train', 'val', 'test']='train',
                  gt_type : Literal['fluence_correction', 'mu_a']='mu_a',
@@ -312,6 +314,97 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         
         return (X, Y, bg_mask)
     
+
+class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
+    # for end-to-end QPAT experimental dataset
+    
+    # Randomised but reproducible fold-partitions for the 84 phantoms in the training data set
+    # (same as in the paper)
+    fold = {
+        0: [ 2, 79,  5, 66, 55, 45, 62, 26, 18, 75, 73, 24, 39, 36, 48, 33],
+        1: [37, 67, 13, 71,  3,  1, 69, 78, 54, 72, 11, 25, 34, 40, 12, 51],
+        2: [19, 30, 83, 57, 74, 53, 41, 82, 20, 31, 28, 76, 81, 64, 42, 52],
+        3: [65, 43,  6, 68, 15,  8,  4, 17, 44, 14, 27, 23, 80, 56,  0, 49],
+        4: [38, 63, 32, 60, 29, 35,  9, 21, 22, 47, 10, 77, 61, 50,  7, 59]
+    }
+    '''
+    https://github.com/BohndiekLab/end_to_end_phantom_QPAT
+    @article{Janek2023IEEE,
+    author = {Janek Gröhl and Thomas R Else and Lina Hacker and Ellie V Bunce and Paul W Sweeney and Sarah E Bohndiek},
+    journal = {IEEE Transactions on Medical Imaging},
+    publisher = {IEEE},
+    title = {Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
+    year = {2023},
+    }
+    @article{grohl2023dataset,
+    title={Dataset for: Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
+    author={Gr{\"o}hl, Janek and Else, Thomas and Hacker, Lina and Bunce, Ellie and Sweeney, Paul and Bohndiek, Sarah},
+    year={2023}
+    }
+    '''     
+    def __init__(self, data_path : str,
+                 stats : dict,
+                 fold : Literal[0, 1, 2, 3, 4],
+                 train : bool,
+                 augment : bool,
+                 use_all_data : bool,
+                 experimental_data : bool=True,
+                 X_transform=None,
+                 Y_transform=None,
+                 mask_transform=None) -> None:
+        
+        vars(self).update(locals())
+        
+        files = glob.glob(data_path + "/*.npz")
+        files.sort()
+        if not use_all_data:
+            tmp_files = []
+            if train:
+                for idx in range(int(len(files)/21)):
+                    if not idx in self.fold[fold]:
+                        tmp_files += files[idx*21:(idx+1)*21]
+            else:
+                for idx in range(int(len(files) / 21)):
+                    if idx in self.fold[fold]:
+                        tmp_files += files[idx * 21:(idx + 1) * 21]
+            files = tmp_files
+        self.files = files
+        print(f"Found {len(files)} items.")
+        
+    def __len__(self):
+        if self.train and self.augment:
+            return len(self.files) * 2
+        else:
+            return len(self.files)
+        
+    def __getitem__(self, idx : int) -> tuple:
+        # every other sample is the same as the previous one but flipped
+        np_data = np.load(self.files[idx // 2])
+        if self.experimental_data:
+            signal = torch.from_numpy(np_data["features_das"].reshape(1, 288, 288)).float()
+        else:
+            signal = torch.from_numpy(np_data["features_sim"].reshape(1, 288, 288)).float()
+            
+        segmentation = np_data["segmentation"]
+        if self.stats['segmentation']['plus_one']:
+            segmentation = segmentation + 1        
+        segmentation = torch.from_numpy(segmentation).unsqueeze(0) > 0        
+        absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
+        
+        if self.X_transform:
+            signal = self.X_transform(signal)
+        if self.Y_transform:
+            absorption = self.Y_transform(absorption)
+        if self.mask_transform:
+            segmentation = self.mask_transform(segmentation)
+        
+        # every other sample is the same as the previous one but flipped
+        if self.train and self.augment and (idx % 2 == 1):
+            signal = torch.fliplr(signal)
+            absorption = torch.fliplr(absorption)
+            segmentation = torch.fliplr(segmentation)
+        
+        return (signal, absorption, segmentation)
 
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,

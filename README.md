@@ -20,9 +20,10 @@ https://github.com/lucidrains/denoising-diffusion-pytorch
     volume      = {33},
     year        = {2020}
 }
-See https://github.com/lucidrains/denoising-diffusion-pytorch or 
-https://github.com/bvale1/denoising-diffusion-pytorch for the full bibliography
-of this repository.
+See https://github.com/lucidrains/denoising-diffusion-pytorch, 
+https://github.com/bvale1/denoising-diffusion-pytorch or 
+denoising-diffusion-pytorch/README.md for the full bibliography of this
+repository.
 
 The code in the folder 'end_to_end_phantom_QPAT' is forked from
 https://github.com/BohndiekLab/end_to_end_phantom_QPAT
@@ -33,6 +34,12 @@ The LICENSE.md is provided.
    publisher = {IEEE},
    title = {Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
    year = {2023},
+}
+The correponding experimental dataset
+@article{grohl2023dataset,
+  title={Dataset for: Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
+  author={Gr{\"o}hl, Janek and Else, Thomas and Hacker, Lina and Bunce, Ellie and Sweeney, Paul and Bohndiek, Sarah},
+  year={2023}
 }
 
 The code in the folder 'vq_vae' is from the VQ-VAE implementation 

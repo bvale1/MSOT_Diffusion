@@ -11,7 +11,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, 
         #default='20250130_ImageNet_MSOT_Dataset'
-        default='20250206_digimouse_MSOT_Dataset'
+        default='20250207_digimouse_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
         #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl

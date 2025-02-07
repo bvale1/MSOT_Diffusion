@@ -17,6 +17,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250130_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic'], default='synthetic', help='whether to use synthetic or experimental data')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=200, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
@@ -55,11 +56,15 @@ if __name__ == '__main__':
     logging.info(f'using device: {device}')
     
     # ==================== Data ====================
-    
-    (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-        args, args.model
-    )
-    
+    match args.synthetic_or_experimental:
+        case 'experimental':
+            (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
+                args, args.model_name, stats_path=os.path.join(args.root_dir, 'stats.json')
+            )
+        case 'synthetic':
+            (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
+                args, args.model
+            )
     # ==================== Model ====================
     image_size = (datasets['train'][0][0].shape[-2],  datasets['train'][0][0].shape[-1])
     channels = datasets['train'][0][0].shape[-3]

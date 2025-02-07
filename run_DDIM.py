@@ -18,6 +18,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250130_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic'], default='synthetic', help='whether to use synthetic or experimental data')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
@@ -59,15 +60,25 @@ if __name__ == '__main__':
     
     # ==================== Data ====================
 
-    if args.use_autoencoder_dir:
-        (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
-        (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-            args=args, model_name='LDDIM'
-        )
-    else:
-        (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
-            args=args, model_name='DDIM'
-        )
+    match args.synthetic_or_experimental:
+        case 'experimental':
+            if args.use_autoencoder_dir:
+                logging.error('autoencoder not supported for experimental data')
+                raise NotImplementedError
+            else:
+                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
+                    args, args.model_name, stats_path=os.path.join(args.root_dir, 'stats.json')
+                )
+        case 'synthetic':
+            if args.use_autoencoder_dir:
+                (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
+                (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+                    args=args, model_name='LDDIM'
+                )
+            else:
+                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+                    args=args, model_name='DDIM'
+                )
     
     # ==================== Model ====================
     input_size = (datasets['train'][0][0].shape[-2], datasets['train'][0][0].shape[-1])

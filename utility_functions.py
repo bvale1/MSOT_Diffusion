@@ -88,7 +88,8 @@ def reset_weights(module : nn.Module) -> None:
             reset_weights(m)
             
             
-def create_dataloaders(args, model_name) -> tuple:
+def create_synthetic_dataloaders(args : argparse.Namespace,
+                                 model_name : str) -> tuple:
     if args.wandb_log:
         wandb.login()
         wandb.init(
@@ -157,6 +158,101 @@ def create_dataloaders(args, model_name) -> tuple:
             args.root_dir, gt_type='mu_a', split='test', data_space='image',
             X_transform=x_transform, Y_transform=y_transform, 
             mask_transform=mask_transform
+        ),
+    }
+    dataloaders = {
+        'train' : DataLoader(
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
+        ),
+        # backpropagation not performed on the validation set so batch size can be larger
+        'val' : DataLoader( 
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+        ),
+        # backpropagation not performed on the test set so batch size can be larger
+        'test' : DataLoader(
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+        )
+    }
+    logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
+        test: {len(datasets["test"])}')
+    return (datasets, dataloaders, normalise_x, normalise_y)
+
+
+def create_e2eQPAT_dataloaders(args : argparse.Namespace,
+                               model_name : str, 
+                               stats_path : str,
+                               fold : Literal[0, 1, 2, 3, 4]) -> tuple:
+    if args.wandb_log:
+        wandb.login()
+        wandb.init(
+            project='MSOT_Diffusion', name=model_name, 
+            save_code=True, reinit=True, config=vars(args)
+        )
+    
+    with open(stats_path, 'r') as f:
+        stats = json.load(f) # <- dataset config contains normalisation parameters
+    
+    match args.data_normalisation:
+        case 'minmax':
+            normalise_x = DatasetMaxMinNormalise(
+                torch.Tensor([stats['signal']['max']]),
+                torch.Tensor([stats['signal']['min']])
+            )
+            normalise_y = DatasetMaxMinNormalise(
+                torch.Tensor([stats['mua']['max']]),
+                torch.Tensor([stats['mua']['min']])
+            )
+        case 'standard':
+            normalise_x = DatasetMeanStdNormalise(
+                torch.Tensor([stats['signal']['mean']]),
+                torch.Tensor([stats['signal']['std']])
+            )
+            normalise_y = DatasetMeanStdNormalise(
+                torch.Tensor([stats['mua']['mean']]),
+                torch.Tensor([stats['mua']['std']])
+            )
+    x_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize(
+            (args.image_size, args.image_size), 
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
+        normalise_x
+    ])
+    y_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
+        normalise_y
+    ])
+    mask_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.NEAREST
+        )
+    ])
+    
+    datasets = {
+        'train' : e2eQPATReconstructAbsorbtionDataset(
+            os.path.join(args.root_dir, 'training'),
+            stats=stats, fold=fold, train=True, augment=True,
+            use_all_data=False, experimental_data=True, X_transform=x_transform,
+            Y_transform=y_transform, mask_transform=mask_transform
+        ),
+        'val' : e2eQPATReconstructAbsorbtionDataset(
+            os.path.join(args.root_dir, 'training'),
+            stats=stats, fold=fold, train=False, augment=False,
+            use_all_data=False, experimental_data=True, X_transform=x_transform, 
+            Y_transform=y_transform, mask_transform=mask_transform
+        ),
+        'test' : e2eQPATReconstructAbsorbtionDataset(
+            os.path.join(args.root_dir, 'test'),
+            stats=stats, fold=fold, train=False, augment=False,
+            use_all_data=True, experimental_data=True, X_transform=x_transform, 
+            Y_transform=y_transform, mask_transform=mask_transform
         ),
     }
     dataloaders = {
