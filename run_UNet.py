@@ -60,7 +60,7 @@ if __name__ == '__main__':
         case 'experimental':
             (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
                 args, args.model, 
-                stats_path=os.path.join(args.root_dir, 'stats.json'),
+                stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
                 fold=0
             )
         case 'synthetic':
