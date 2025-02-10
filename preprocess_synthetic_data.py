@@ -58,6 +58,9 @@ if __name__ == '__main__':
         os.makedirs(os.path.join(args.output_dir, dataset_cfg['dataset_name']))
     with h5py.File(file_path, 'w') as f:
         logging.info(f"creating {file_path}")
+        f.create_group('train')
+        f.create_group('val')
+        f.create_group('test')
         
     
     h5_dirs = glob.glob(os.path.join(args.root_dir, '**/*.h5'), recursive=True)

@@ -68,22 +68,24 @@ if __name__ == '__main__':
                 raise NotImplementedError
             else:
                 (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
-                    args, args.model_name, stats_path=os.path.join(args.root_dir, 'stats.json')
+                    args, args.model_name, 
+                    stats_path=os.path.join(args.root_dir, 'stats.json'),
+                    fold=0                    
                 )
         case 'synthetic':
             if args.use_autoencoder_dir:
                 (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
-                (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+                (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
                     args=args, model_name='LDBIM'
                 )
             else:
-                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_dataloaders(
+                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
                     args=args, model_name='DBIM'
                 )
     
     # ==================== Model ====================
-    input_size = (datasets['train'][0][0].shape[-2], datasets['train'][0][0].shape[-1])
-    channels = datasets['train'][0][0].shape[-3]
+    input_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
+    channels = datasets['test'][0][0].shape[-3]
     model = ddp.Unet(
         dim=32, channels=channels, self_condition=args.self_condition,
         image_condition=True, full_attn=False, flash_attn=False
