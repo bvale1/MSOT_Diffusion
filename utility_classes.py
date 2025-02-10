@@ -354,6 +354,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                  mask_transform=None) -> None:
         
         vars(self).update(locals())
+        self.cfg = stats
         
         files = glob.glob(data_path + "/*.npz")
         files.sort()
