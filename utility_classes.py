@@ -320,7 +320,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
     
     # Randomised but reproducible fold-partitions for the 84 phantoms in the training data set
     # (same as in the paper)
-    fold = {
+    folds = {
         0: [ 2, 79,  5, 66, 55, 45, 62, 26, 18, 75, 73, 24, 39, 36, 48, 33],
         1: [37, 67, 13, 71,  3,  1, 69, 78, 54, 72, 11, 25, 34, 40, 12, 51],
         2: [19, 30, 83, 57, 74, 53, 41, 82, 20, 31, 28, 76, 81, 64, 42, 52],
@@ -361,11 +361,11 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             tmp_files = []
             if train:
                 for idx in range(int(len(files)/21)):
-                    if not idx in self.fold[fold]:
+                    if not idx in self.folds[fold]:
                         tmp_files += files[idx*21:(idx+1)*21]
             else:
                 for idx in range(int(len(files) / 21)):
-                    if idx in self.fold[fold]:
+                    if idx in self.folds[fold]:
                         tmp_files += files[idx * 21:(idx + 1) * 21]
             files = tmp_files
         self.files = files
