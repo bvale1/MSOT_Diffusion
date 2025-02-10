@@ -388,7 +388,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         segmentation = np_data["segmentation"]
         if self.stats['segmentation']['plus_one']:
             segmentation = segmentation + 1        
-        segmentation = torch.from_numpy(segmentation).unsqueeze(0) > 0        
+        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) > 0        
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
         
         if self.X_transform:
