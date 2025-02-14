@@ -62,13 +62,13 @@ if __name__ == '__main__':
     match args.synthetic_or_experimental:
         case 'experimental':
             (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
-                args, args.model_name,
+                args, args.VAE_model,
                 stats_path=os.path.join(args.root_dir, 'stats.json'),
                 fold=0
             )
         case 'synthetic':
             (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
-                args, args.model
+                args, args.VAE_model
             )
     # ==================== Model ====================
     image_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
