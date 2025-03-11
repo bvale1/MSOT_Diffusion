@@ -7,6 +7,7 @@ import json
 import numpy as np
 import torch.nn as nn
 import segmentation_models_pytorch as smp
+import denoising_diffusion_pytorch as ddp
 
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
@@ -30,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
-    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT'], default='UNet_smp', help='model to train')
+    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
     
     args = parser.parse_args()
@@ -75,13 +76,19 @@ if __name__ == '__main__':
             model = smp.Unet(
                 encoder_name='resnet101', encoder_weights='imagenet',
                 decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-                in_channels=channels, classes=1, 
+                in_channels=channels, classes=channels, 
             )
             uf.reset_weights(model)
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
-                in_channels=1, out_channels=1,
+                in_channels=channels, out_channels=channels,
                 initial_filter_size=64, kernel_size=3
+            )
+        case 'UNet_wl_pos_emb':
+            model = ddp.Unet(
+                dim=32, channels=channels, self_condition=False,
+                image_condition=False, full_attn=False, flash_attn=False,
+                learned_sinusoidal_cond=True
             )
     
     if args.load_checkpoint:
@@ -120,11 +127,14 @@ if __name__ == '__main__':
         total_train_loss = 0
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
-        for i, (X, Y, _) in enumerate(dataloaders['train']):
+        for i, (X, Y, _, wavelength_nm) in enumerate(dataloaders['train']):
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
-            Y_hat = model(X)
+            if args.model == 'UNet_wl_pos_emb':
+                Y_hat = model(Y, wavelength_nm.to(device))
+            else:
+                Y_hat = model(X)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i*args.train_batch_size
@@ -146,10 +156,13 @@ if __name__ == '__main__':
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         with torch.no_grad():
-            for i, (X, Y, _) in enumerate(dataloaders['val']):
+            for i, (X, Y, _, wavelength_nm) in enumerate(dataloaders['val']):
                 X = X.to(device)
                 Y = Y.to(device)
-                Y_hat = model(X)
+                if args.model == 'UNet_wl_pos_emb':
+                    Y_hat = model(Y, wavelength_nm.to(device))
+                else:
+                    Y_hat = model(X)
                 loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
                 best_and_worst_examples = uf.get_best_and_worst(
                     loss, best_and_worst_examples, i*args.val_batch_size
@@ -185,10 +198,13 @@ if __name__ == '__main__':
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
     test_metric_calculator = uc.TestMetricCalculator()
     with torch.no_grad():
-        for i, (X, Y, bg_mask) in enumerate(dataloaders['test']):
+        for i, (X, Y, bg_mask, wavelength_nm) in enumerate(dataloaders['test']):
             X = X.to(device)
             Y = Y.to(device)
-            Y_hat = model(X)
+            if args.model == 'UNet_wl_pos_emb':
+                Y_hat = model(X, wavelength_nm.to(device))
+            else:
+                Y_hat = model(X)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
             test_metric_calculator(
                 Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask

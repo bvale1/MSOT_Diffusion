@@ -11,13 +11,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, 
         #default='20250130_ImageNet_MSOT_Dataset'
-        default='20250207_digimouse_MSOT_Dataset'
+        default='20250311_ImageNet_MSOT_Dataset'
+        #default='20250207_digimouse_MSOT_Dataset'
+        #default='20250311_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
-        #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
-        #default = 'F:\\cluster_MSOT_simulations\\ImageNet_fluence_correction' # from windows
-        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
-        #default = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
+        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_extrusion/3d_digimouse'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
@@ -35,8 +36,8 @@ if __name__ == '__main__':
         'n_images': 0,
         'dx' : 0.0001,
         'crop_size' : 256,
-        #'train_val_test_split' : [0.8, 0.1, 0.1],
-        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        'train_val_test_split' : [0.8, 0.1, 0.1],
+        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
             'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
@@ -87,6 +88,7 @@ if __name__ == '__main__':
                 non_empty_sim_dirs.append(sim)
     
     sample_split_keys = list(sample_split.keys())
+    np.random.seed(42)
     np.random.shuffle(sample_split_keys)
     # normalise the train, val, and test splits
     train_val_test_split = np.asarray(dataset_cfg['train_val_test_split'])
@@ -108,6 +110,7 @@ if __name__ == '__main__':
     for i, sim in enumerate(non_empty_sim_dirs):
         logging.info(f'Loading {sim} ({i+1}/{len(non_empty_sim_dirs)})')
         [data, cfg] = load_sim(sim)
+        wavelength_nm = int(cfg['wavelengths'][0] * 1e9) # convert m to nm
         sim_name = sim.replace('\\', '/')
         
         if i == 0: # assume all simulations have the same dx and square crop size
@@ -185,6 +188,7 @@ if __name__ == '__main__':
                 image_group.create_dataset('corrected_image', data=corrected_image, dtype=np.float32)
                 image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
                 image_group.create_dataset('bg_mask', data=bg_mask, dtype=bool)
+                image_group.create_dataset('wavelength_nm', data=wavelength_nm, dtype=int)
                 
     ssr_X = 0.0
     ssr_corrected_image = 0.0

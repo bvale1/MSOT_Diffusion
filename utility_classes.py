@@ -276,7 +276,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         self.data_space = data_space
         self.X_transform = X_transform
         self.Y_transform = Y_transform
-        self.mask_transform = mask_transform        
+        self.mask_transform = mask_transform
         
         match gt_type:
             case 'fluence_correction':
@@ -300,6 +300,9 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
             Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
             bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
+            wavelength_nm = f[self.split][self.samples[idx]]['wavelength_nm'][()]
+        wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
+        
         if X.dim()==2: # add channel dimension
             X = X.unsqueeze(0)
         if Y.dim()==2:
@@ -313,7 +316,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         if self.mask_transform:
             bg_mask = self.mask_transform(bg_mask)
         
-        return (X, Y, bg_mask)
+        return (X, Y, bg_mask, wavelength_nm)
     
 
 class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
@@ -392,7 +395,9 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             segmentation = segmentation + 1        
         segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) == 0        
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
-        
+        wavelength_nm = int(self.files[idx // 2].split('_')[-1][:3])
+        wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
+            
         if self.X_transform:
             signal = self.X_transform(signal)
         if self.Y_transform:
@@ -406,7 +411,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             absorption = torch.fliplr(absorption)
             segmentation = torch.fliplr(segmentation)
         
-        return (signal, absorption, segmentation)
+        return (signal, absorption, segmentation, wavelength_nm)
 
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,
