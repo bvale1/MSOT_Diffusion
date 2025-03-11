@@ -132,7 +132,7 @@ if __name__ == '__main__':
             Y = Y.to(device)
             optimizer.zero_grad()
             if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(Y, wavelength_nm.to(device))
+                Y_hat = model(Y, wavelength_nm.to(device).squeeze())
             else:
                 Y_hat = model(X)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
@@ -160,7 +160,7 @@ if __name__ == '__main__':
                 X = X.to(device)
                 Y = Y.to(device)
                 if args.model == 'UNet_wl_pos_emb':
-                    Y_hat = model(Y, wavelength_nm.to(device))
+                    Y_hat = model(Y, wavelength_nm.to(device).squeeze())
                 else:
                     Y_hat = model(X)
                 loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
@@ -202,7 +202,7 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(X, wavelength_nm.to(device))
+                Y_hat = model(X, wavelength_nm.to(device).squeeze())
             else:
                 Y_hat = model(X)
             loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
