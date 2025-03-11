@@ -153,7 +153,7 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            scheduler.step()
+            #scheduler.step()
             if args.wandb_log:
                 wandb.log(
                     {'train_loss' : loss.item()}

@@ -232,28 +232,29 @@ class ReconstructAbsorbtionDataset(Dataset):
         axes[1, 1].set_xlim(extent[0], extent[1])
         axes[1, 1].legend()
         
+        # optional plot either X_hat or mask, priority to X_hat
         if type(X_hat) == np.ndarray:
             img.append(axes[1, 2].imshow(
                 X_hat, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,
                 origin='lower', extent=extent
             ))
             axes[1, 2].set_title(r'$\hat{X}$')
-            divider = make_axes_locatable(axes[1, 2])
-            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
-            cbars.append(fig.colorbar(img[-1], cax=cbar_ax, orientation='vertical'))
-            axes[1, 2].set_xlabel('x (mm)')
-            axes[1, 2].set_ylabel('z (mm)')
-            if X_cbar_unit:
-                cbars[-1].set_label(X_cbar_unit)        
+                 
         elif type(mask) == torch.Tensor:
             mask = mask.detach().cpu().squeeze().numpy()
             img.append(axes[1, 2].imshow(
                 mask, cmap='binary', origin='lower', extent=extent
             ))
             axes[1, 2].set_title('Mask')
+            
+        if type(mask) == torch.Tensor or type(X_hat) == np.ndarray:
+            divider = make_axes_locatable(axes[1, 2])
+            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
+            cbars.append(fig.colorbar(img[-1], cax=cbar_ax, orientation='vertical'))
             axes[1, 2].set_xlabel('x (mm)')
             axes[1, 2].set_ylabel('z (mm)')
-            
+            if X_cbar_unit and type(X_hat) == np.ndarray:
+                cbars[-1].set_label(X_cbar_unit)   
         
         fig.tight_layout()
         return (fig, axes)
@@ -389,7 +390,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         segmentation = np_data["segmentation"]
         if self.stats['segmentation']['plus_one']:
             segmentation = segmentation + 1        
-        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) > 0        
+        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) == 0        
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
         
         if self.X_transform:
