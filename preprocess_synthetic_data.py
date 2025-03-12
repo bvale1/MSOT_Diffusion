@@ -11,14 +11,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, 
         #default='20250130_ImageNet_MSOT_Dataset'
-        default='20250311_ImageNet_MSOT_Dataset'
+        #default='20250311_ImageNet_MSOT_Dataset'
         #default='20250207_digimouse_MSOT_Dataset'
-        #default='20250311_digimouse_extrusion_MSOT_Dataset'
+        default='20250312_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
-        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
+        #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
         #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_extrusion/3d_digimouse'
+        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
@@ -36,8 +36,8 @@ if __name__ == '__main__':
         'n_images': 0,
         'dx' : 0.0001,
         'crop_size' : 256,
-        'train_val_test_split' : [0.8, 0.1, 0.1],
-        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        #'train_val_test_split' : [0.8, 0.1, 0.1],
+        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
             'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
@@ -110,7 +110,6 @@ if __name__ == '__main__':
     for i, sim in enumerate(non_empty_sim_dirs):
         logging.info(f'Loading {sim} ({i+1}/{len(non_empty_sim_dirs)})')
         [data, cfg] = load_sim(sim)
-        wavelength_nm = int(cfg['wavelengths'][0] * 1e9) # convert m to nm
         sim_name = sim.replace('\\', '/')
         
         if i == 0: # assume all simulations have the same dx and square crop size
@@ -118,6 +117,12 @@ if __name__ == '__main__':
             dataset_cfg['crop_size'] = cfg['crop_size']
         
         for j, image in enumerate(data.keys()):
+            try:
+                wavelength_nm = int(cfg['wavelengths'][0] * 1e9) # convert m to nm
+            except:
+                # wavelength is not in the config file of digimouse simulations
+                wavelength_nm = image.split('__')[-1].split('_')[-1]
+            
             group_name = (sim_name.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
             
             if ('p0_tr' not in data[image].keys()):

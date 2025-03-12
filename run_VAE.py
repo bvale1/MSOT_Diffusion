@@ -90,7 +90,7 @@ if __name__ == '__main__':
             model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
             logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
         except Exception as e:
-            logging.error(f'could not load checkpoint: {e}')
+            logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
@@ -230,6 +230,9 @@ if __name__ == '__main__':
     logging.info(f'mean_test_loss: {total_test_loss/(2*len(dataloaders['test']))}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
+    test_metric_calculator.save_metrics_all_test_samples(
+        os.path.join(args.save_dir, 'test_metrics.json')
+    )
     if args.wandb_log:
         wandb.log(test_metric_calculator.get_metrics())
     if args.save_dir and args.epochs > 0:
