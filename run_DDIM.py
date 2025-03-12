@@ -67,7 +67,7 @@ if __name__ == '__main__':
                 raise NotImplementedError
             else:
                 (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
-                    args, model_name='DBIM', 
+                    args, model_name='DDIM', 
                     stats_path=os.path.join(args.root_dir, 'stats.json'),
                     fold=0
                 )

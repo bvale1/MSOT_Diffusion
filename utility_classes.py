@@ -553,3 +553,7 @@ class TestMetricCalculator():
             'mean_SSIM' : np.mean(np.asarray(self.metrics['SSIM'])),
             'std_SSIM' : np.std(np.asarray(self.metrics['SSIM']))
         }
+        
+    def save_metrics_all_test_samples(self, save_path : str) -> None:
+        with open(save_path, 'w') as f:
+            json.dump(self.metrics, f)

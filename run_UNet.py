@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
     parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
+    parser.add_argument('--fold', choices=[0, 1, 2, 3, 4], default=1, help='fold for cross-validation, only used for experimental data')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -62,7 +63,7 @@ if __name__ == '__main__':
             (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
                 args, args.model, 
                 stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
-                fold=0
+                fold=args.fold
             )
         case 'synthetic':
             (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
@@ -219,6 +220,9 @@ if __name__ == '__main__':
     logging.info(f'total_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
+    test_metric_calculator.save_metrics_all_test_samples(
+        os.path.join(args.save_save_dir, 'test_metrics.json')
+    )
     if args.wandb_log:
         wandb.log(test_metric_calculator.get_metrics())
     if args.save_dir and args.epochs > 0:
@@ -233,16 +237,23 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, mask_0) = datasets['test'][0]
-        (X_1, Y_1, mask_1) = datasets['test'][1]
-        (X_2, Y_2, mask_2) = datasets['test'][2]
-        (X_best, Y_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
+        (X_0, Y_0, mask_0, wavelength_nm_0) = datasets['test'][0]
+        (X_1, Y_1, mask_1, wavelength_nm_1) = datasets['test'][1]
+        (X_2, Y_2, mask_2, wavelength_nm_2) = datasets['test'][2]
+        (X_best, Y_best, mask_best, wavelength_nm_best) = datasets['test'][best_and_worst_examples['best']['index']]
+        (X_worst, Y_worst, mask_worst, wavelength_nm_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
+        wavelength_nm = torch.stack(
+            (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
+             wavelength_nm_best, wavelength_nm_worst), dim=0
+        )
         with torch.no_grad():
-            Y_hat = model.forward(X)
+            if args.model == 'UNet_wl_pos_emb':
+                Y_hat = model(X, wavelength_nm.squeeze())
+            else:
+                Y_hat = model.forward(X)
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
