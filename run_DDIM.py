@@ -68,7 +68,7 @@ if __name__ == '__main__':
             else:
                 (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
                     args, model_name='DDIM', 
-                    stats_path=os.path.join(args.root_dir, 'stats.json'),
+                    stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
                     fold=0
                 )
         case 'synthetic':

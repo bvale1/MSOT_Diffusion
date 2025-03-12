@@ -181,7 +181,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
 def create_e2eQPAT_dataloaders(args : argparse.Namespace,
                                model_name : str, 
                                stats_path : str,
-                               fold : Literal[0, 1, 2, 3, 4]) -> tuple:
+                               fold : Literal['0', '1', '2', '3', '4']) -> tuple:
     if args.wandb_log:
         wandb.login()
         wandb.init(
@@ -238,19 +238,19 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     datasets = {
         'train' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'training'),
-            stats=stats, fold=fold, train=True, augment=True,
+            stats=stats, fold=int(fold), train=True, augment=True,
             use_all_data=False, experimental_data=True, X_transform=x_transform,
             Y_transform=y_transform, mask_transform=mask_transform
         ),
         'val' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'training'),
-            stats=stats, fold=fold, train=False, augment=False,
+            stats=stats, fold=int(fold), train=False, augment=False,
             use_all_data=False, experimental_data=True, X_transform=x_transform, 
             Y_transform=y_transform, mask_transform=mask_transform
         ),
         'test' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'test'),
-            stats=stats, fold=fold, train=False, augment=False,
+            stats=stats, fold=int(fold), train=False, augment=False,
             use_all_data=True, experimental_data=True, X_transform=x_transform, 
             Y_transform=y_transform, mask_transform=mask_transform
         ),
