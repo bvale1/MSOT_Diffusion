@@ -275,11 +275,11 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, mask_0) = datasets['test'][0]
-        (X_1, Y_1, mask_1) = datasets['test'][1]
-        (X_2, Y_2, mask_2) = datasets['test'][2]
-        (X_best, Y_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
+        (X_0, Y_0, mask_0, _) = datasets['test'][0]
+        (X_1, Y_1, mask_1, _) = datasets['test'][1]
+        (X_2, Y_2, mask_2, _) = datasets['test'][2]
+        (X_best, Y_best, mask_best, _) = datasets['test'][best_and_worst_examples['best']['index']]
+        (X_worst, Y_worst, mask_worst, _) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)

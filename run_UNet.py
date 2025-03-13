@@ -79,7 +79,7 @@ if __name__ == '__main__':
             model = smp.Unet(
                 encoder_name='resnet101', encoder_weights='imagenet',
                 decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-                in_channels=channels, classes=channels, 
+                in_channels=channels, classes=channels
             )
             uf.reset_weights(model)
         case 'UNet_e2eQPAT':
@@ -150,9 +150,9 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            if (i+1) * (epoch+1) < warmup_scheduler.warmup_period:
-                warmup_scheduler.dampening()
-            #scheduler.step()
+            with warmup_scheduler.dampening():
+                pass
+                #scheduler.step()
             if args.wandb_log:
                 wandb.log({'train_loss' : loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
