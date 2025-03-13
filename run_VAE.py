@@ -4,6 +4,7 @@ import logging
 import torch
 import os
 import json
+import timeit
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -93,6 +94,8 @@ if __name__ == '__main__':
             logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
+    if args.wandb_log: 
+        wandb.log({'number_of_parameters' : no_params})
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
     model = model.to(device)
     
@@ -198,6 +201,7 @@ if __name__ == '__main__':
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
     test_metric_calculator = uc.TestMetricCalculator()
+    test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             (X, Y, bg_mask) = batch
@@ -227,6 +231,9 @@ if __name__ == '__main__':
                      'test_loss_rec' : loss_rec.item(),
                      'test_loss_vq' : loss_vq.item()}
                 )
+    total_test_time = timeit.default_timer() - test_start_time
+    logging.info(f'test_time: {total_test_time}')
+    logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
     logging.info(f'mean_test_loss: {total_test_loss/(2*len(dataloaders['test']))}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
@@ -235,6 +242,8 @@ if __name__ == '__main__':
     )
     if args.wandb_log:
         wandb.log(test_metric_calculator.get_metrics())
+        wandb.log({'test_time' : total_test_time,
+                   'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 

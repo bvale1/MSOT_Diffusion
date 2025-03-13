@@ -4,6 +4,7 @@ import logging
 import torch
 import os
 import json
+import timeit
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -103,6 +104,8 @@ if __name__ == '__main__':
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of diffusion model parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
+    if args.wandb_log: 
+        wandb.log({'number_of_parameters' : no_params})
     model = model.to(device)
     diffusion = diffusion.to(device)
     
@@ -217,6 +220,7 @@ if __name__ == '__main__':
     test_metric_calculator = uc.TestMetricCalculator()
     if args.use_autoencoder_dir:
         image_test_iter = iter(image_dataloaders['test'])
+    test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             X = batch[0].to(device)
@@ -244,6 +248,9 @@ if __name__ == '__main__':
                 test_metric_calculator(
                     Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
                 )
+    total_test_time = timeit.default_timer() - test_start_time
+    logging.info(f'test_time: {total_test_time}')
+    logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     if args.use_autoencoder_dir:
         logging.info(f'mean_test_loss_rec: {total_test_loss_rec/len(dataloaders['test'])}')
@@ -254,6 +261,8 @@ if __name__ == '__main__':
     )
     if args.wandb_log:
         wandb.log(test_metric_calculator.get_metrics())
+        wandb.log({'test_time' : total_test_time,
+                   'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 

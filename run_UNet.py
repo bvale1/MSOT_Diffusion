@@ -4,6 +4,7 @@ import logging
 import torch
 import os
 import json
+import timeit
 import numpy as np
 import torch.nn as nn
 import segmentation_models_pytorch as smp
@@ -101,6 +102,8 @@ if __name__ == '__main__':
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
+    if args.wandb_log: 
+        wandb.log({'number_of_parameters' : no_params})
     model.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
@@ -145,7 +148,7 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            scheduler.step()
+            #scheduler.step()
             if args.wandb_log:
                 wandb.log({'train_loss' : loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
@@ -198,6 +201,7 @@ if __name__ == '__main__':
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
     test_metric_calculator = uc.TestMetricCalculator()
+    test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, (X, Y, bg_mask, wavelength_nm) in enumerate(dataloaders['test']):
             X = X.to(device)
@@ -217,7 +221,10 @@ if __name__ == '__main__':
             total_test_loss += loss.item()
             if args.wandb_log:
                 wandb.log({'test_loss' : loss.item()})
-    logging.info(f'total_test_loss: {total_test_loss/len(dataloaders['test'])}')
+    total_test_time = timeit.default_timer() - test_start_time
+    logging.info(f'test_time: {total_test_time}')
+    logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
+    logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
     test_metric_calculator.save_metrics_all_test_samples(
@@ -225,6 +232,8 @@ if __name__ == '__main__':
     )
     if args.wandb_log:
         wandb.log(test_metric_calculator.get_metrics())
+        wandb.log({'test_time' : total_test_time,
+                   'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
         torch.save(
             model.state_dict(), 
