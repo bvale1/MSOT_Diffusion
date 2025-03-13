@@ -243,11 +243,11 @@ class ReconstructAbsorbtionDataset(Dataset):
         elif type(mask) == torch.Tensor:
             mask = mask.detach().cpu().squeeze().numpy()
             img.append(axes[1, 2].imshow(
-                mask, cmap='binary', origin='lower', extent=extent
+                mask, cmap='binary_r', origin='lower', extent=extent
             ))
             axes[1, 2].set_title('Mask')
             
-        if type(mask) == torch.Tensor or type(X_hat) == np.ndarray:
+        if type(mask) == np.ndarray or type(X_hat) == np.ndarray:
             divider = make_axes_locatable(axes[1, 2])
             cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
             cbars.append(fig.colorbar(img[-1], cax=cbar_ax, orientation='vertical'))
@@ -393,7 +393,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         segmentation = np_data["segmentation"]
         if self.stats['segmentation']['plus_one']:
             segmentation = segmentation + 1        
-        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) == 0        
+        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) != 0        
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
         wavelength_nm = int(self.files[idx // 2].split('_')[-1][:3])
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    

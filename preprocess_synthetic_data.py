@@ -12,13 +12,13 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_name', type=str, 
         #default='20250130_ImageNet_MSOT_Dataset'
         #default='20250311_ImageNet_MSOT_Dataset'
-        #default='20250207_digimouse_MSOT_Dataset'
-        default='20250312_digimouse_extrusion_MSOT_Dataset'
+        default='20250313_digimouse_MSOT_Dataset'
+        #default='20250312_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
         #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
-        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
+        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
