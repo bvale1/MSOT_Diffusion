@@ -7,6 +7,7 @@ import json
 import timeit
 import numpy as np
 import torch.nn as nn
+import pytorch_warmup as warmup
 import segmentation_models_pytorch as smp
 import denoising_diffusion_pytorch as ddp
 
@@ -110,9 +111,10 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
-    )
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #    optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
+    #)
+    warmup_scheduler = warmup.UntunedLinearWarmup(optimizer, warmup_period=1000)
     mse_loss = nn.MSELoss(reduction='none')
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
@@ -148,6 +150,8 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            if (i+1) * (epoch+1) < warmup_scheduler.warmup_period:
+                warmup_scheduler.dampening()
             #scheduler.step()
             if args.wandb_log:
                 wandb.log({'train_loss' : loss.item()})
