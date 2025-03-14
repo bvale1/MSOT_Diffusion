@@ -7,6 +7,7 @@ import json
 import timeit
 import numpy as np
 import torch.nn as nn
+import pytorch_warmup as warmup
 import torch.nn.functional as F
 import denoising_diffusion_pytorch as ddp
 
@@ -126,9 +127,10 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, betas=(0.9, 0.99), eps=1e-8, amsgrad=True
     )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
-    )
+    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #    optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
+    #)
+    warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=2000)
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
@@ -156,7 +158,9 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            #scheduler.step()
+            with warmup_scheduler.dampening(): # step warmup and lr schedulers
+                pass
+                #scheduler.step()
             if args.wandb_log:
                 wandb.log(
                     {'train_loss' : loss.item()}
@@ -263,7 +267,7 @@ if __name__ == '__main__':
                 test_metric_calculator(
                     Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
                 )
-    total_test_time = test_start_time - timeit.default_timer()
+    total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'test_time: {total_test_time}')
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')

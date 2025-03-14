@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
-    parser.add_argument('--load_checkpoint', type=str, default=None, help='path to load a model checkpoint')
+    parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
     parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
@@ -94,12 +94,12 @@ if __name__ == '__main__':
                 learned_sinusoidal_cond=True
             )
     
-    if args.load_checkpoint:
+    if args.load_checkpoint_dir:
         try:
-            model.load_state_dict(torch.load(args.load_checkpoint, weights_only=True))
-            logging.info(f'loaded checkpoint: {args.load_checkpoint}')
+            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
+            logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
         except Exception as e:
-            logging.error(f'could not load checkpoint: {args.load_checkpoint} {e}')
+            logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
@@ -150,7 +150,7 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            with warmup_scheduler.dampening():
+            with warmup_scheduler.dampening(): # step warmup and lr schedulers
                 pass
                 #scheduler.step()
             if args.wandb_log:
