@@ -114,7 +114,7 @@ if __name__ == '__main__':
     #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
     #    optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
     #)
-    warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=2000)
+    #warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=2000)
     mse_loss = nn.MSELoss(reduction='none')
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
@@ -150,8 +150,8 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            with warmup_scheduler.dampening(): # step warmup and lr schedulers
-                pass
+            #with warmup_scheduler.dampening(): # step warmup and lr schedulers
+                #pass
                 #scheduler.step()
             if args.wandb_log:
                 wandb.log({'train_loss' : loss.item()})
