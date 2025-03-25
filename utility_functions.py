@@ -110,6 +110,10 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
                 torch.Tensor([config['normalisation_mu_a']['max']]),
                 torch.Tensor([config['normalisation_mu_a']['min']])
             )
+            normalise_fluence = DatasetMaxMinNormalise(
+                torch.Tensor([config['normalisation_Phi']['max']]),
+                torch.Tensor([config['normalisation_Phi']['min']])
+            )
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
                 torch.Tensor([config['normalisation_X']['mean']]),
@@ -118,6 +122,10 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
             normalise_y = DatasetMeanStdNormalise(
                 torch.Tensor([config['normalisation_mu_a']['mean']]),
                 torch.Tensor([config['normalisation_mu_a']['std']])
+            )
+            normalise_fluence = DatasetMeanStdNormalise(
+                torch.Tensor([config['normalisation_Phi']['mean']]),
+                torch.Tensor([config['normalisation_Phi']['std']])
             )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
@@ -135,6 +143,14 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
         ),
         normalise_y
     ])
+    fluence_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
+        normalise_fluence
+    ])
     mask_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize(
@@ -147,17 +163,17 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
         'train' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='train', data_space='image',
             X_transform=x_transform, Y_transform=y_transform, 
-            mask_transform=mask_transform
+            fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='val', data_space='image',
             X_transform=x_transform, Y_transform=y_transform, 
-            mask_transform=mask_transform
+            fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
             args.root_dir, gt_type='mu_a', split='test', data_space='image',
             X_transform=x_transform, Y_transform=y_transform, 
-            mask_transform=mask_transform
+            fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
     }
     dataloaders = {
@@ -175,7 +191,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
         test: {len(datasets["test"])}')
-    return (datasets, dataloaders, normalise_x, normalise_y)
+    return (datasets, dataloaders, normalise_x, normalise_y, normalise_fluence)
 
 
 def create_e2eQPAT_dataloaders(args : argparse.Namespace,
@@ -202,6 +218,11 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
                 torch.Tensor([stats['mua']['max']]),
                 torch.Tensor([stats['mua']['min']])
             )
+            normalise_fluence = DatasetMaxMinNormalise(
+                torch.Tensor([stats['fluence']['max']]),
+                torch.Tensor([stats['fluence']['min']])
+            )
+            
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
                 torch.Tensor([stats['signal']['mean']]),
@@ -210,6 +231,10 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
             normalise_y = DatasetMeanStdNormalise(
                 torch.Tensor([stats['mua']['mean']]),
                 torch.Tensor([stats['mua']['std']])
+            )
+            normalise_fluence = DatasetMeanStdNormalise(
+                torch.Tensor([stats['fluence']['mean']]),
+                torch.Tensor([stats['fluence']['std']])
             )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
@@ -227,6 +252,13 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
         ),
         normalise_y
     ])
+    fluence_transform = transforms.Compose([
+        ReplaceNaNWithZero(),
+        transforms.Resize(
+            (args.image_size, args.image_size),
+            interpolation=transforms.InterpolationMode.BILINEAR
+        ),
+    ])
     mask_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize(
@@ -240,19 +272,22 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
             os.path.join(args.root_dir, 'training'),
             stats=stats, fold=int(fold), train=True, augment=True,
             use_all_data=False, experimental_data=True, X_transform=x_transform,
-            Y_transform=y_transform, mask_transform=mask_transform
+            Y_transform=y_transform, fluence_transform=fluence_transform,
+            mask_transform=mask_transform
         ),
         'val' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'training'),
             stats=stats, fold=int(fold), train=False, augment=False,
             use_all_data=False, experimental_data=True, X_transform=x_transform, 
-            Y_transform=y_transform, mask_transform=mask_transform
+            Y_transform=y_transform, fluence_transform=fluence_transform,
+            mask_transform=mask_transform
         ),
         'test' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'test'),
             stats=stats, fold=int(fold), train=False, augment=False,
             use_all_data=True, experimental_data=True, X_transform=x_transform, 
-            Y_transform=y_transform, mask_transform=mask_transform
+            Y_transform=y_transform, fluence_transform=fluence_transform,
+            mask_transform=mask_transform
         ),
     }
     dataloaders = {
@@ -270,7 +305,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
         test: {len(datasets["test"])}')
-    return (datasets, dataloaders, normalise_x, normalise_y)
+    return (datasets, dataloaders, normalise_x, normalise_y, normalise_fluence)
 
 
 def create_embedding_dataloaders(args) -> tuple:

@@ -9,16 +9,15 @@ from utility_functions import square_centre_crop
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_name', type=str, 
-        #default='20250130_ImageNet_MSOT_Dataset'
+    parser.add_argument('--dataset_name', type=str,
         #default='20250311_ImageNet_MSOT_Dataset'
-        default='20250313_digimouse_MSOT_Dataset'
-        #default='20250312_digimouse_extrusion_MSOT_Dataset'
+        #default='20250313_digimouse_MSOT_Dataset'
+        default='20250312_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
         #default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
-        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
+        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
@@ -39,9 +38,13 @@ if __name__ == '__main__':
         #'train_val_test_split' : [0.8, 0.1, 0.1],
         'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
         'units' : {
-            'X' : 'Pa J^-1', 'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
+            'X' : 'Pa J^-1', 'Phi' : 'm^-2', 
+            'corrected_image' : 'm^-1 J^-1', 'mu_a' : 'm^-1'
         },
         'normalisation_X': {
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
+        },
+        'normalisation_Phi': {
             'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
         },
         'normalisation_corrected_image': {
@@ -149,13 +152,16 @@ if __name__ == '__main__':
             # X is the pressure image divided by the laser energy (laser energy normalisation)
             X = data[image]['p0_tr'] / cfg['LaserEnergy'][j]
             # corrected_image is the fluence (Phi) corrected image
-            # fluence (Phi) is clamped at 1e-8 to avoid division by zero
             Phi = data[image]['Phi']
-            Phi[Phi < 1e-8] = 1e-8
-            corrected_image = data[image]['p0_tr'] / Phi
-            # absorption coefficient may also be used as a target instead of 
-            # the fluence corrected image
+            # fluence (Phi) is clamped at 1e-8 to avoid division by zero
+            Phi_clamped = Phi.copy()
+            Phi_clamped[Phi_clamped < 1e-8] = 1e-8
+            corrected_image = data[image]['p0_tr'] / Phi_clamped
+            # either absorption coefficient, fluence, or the fluence corrected
+            # image may be used as the target
             mu_a = data[image]['mu_a']
+            # Phi is also normalised by the laser energy before being saved
+            Phi = Phi / cfg['LaserEnergy'][j] # [J m^-2] -> [m^-2]
             
             bg_mask = square_centre_crop(
                 np.squeeze(data[image]['bg_mask']), dataset_cfg['crop_size']
@@ -179,6 +185,9 @@ if __name__ == '__main__':
             dataset_cfg['normalisation_X']['max'] = max(dataset_cfg['normalisation_X']['max'], float(np.max(X)))
             dataset_cfg['normalisation_X']['min'] = min(dataset_cfg['normalisation_X']['min'], float(np.min(X)))
             dataset_cfg['normalisation_X']['mean'] += float(np.mean(X) / n_images)
+            dataset_cfg['normalisation_Phi']['max'] = max(dataset_cfg['normalisation_Phi']['max'], float(np.max(Phi)))
+            dataset_cfg['normalisation_Phi']['min'] = min(dataset_cfg['normalisation_Phi']['min'], float(np.min(Phi)))
+            dataset_cfg['normalisation_Phi']['mean'] += float(np.mean(Phi) / n_images)
             dataset_cfg['normalisation_corrected_image']['max'] = max(dataset_cfg['normalisation_corrected_image']['max'], float(np.max(corrected_image)))
             dataset_cfg['normalisation_corrected_image']['min'] = min(dataset_cfg['normalisation_corrected_image']['min'], float(np.min(corrected_image)))
             dataset_cfg['normalisation_corrected_image']['mean'] += float(np.mean(corrected_image) / n_images)
@@ -190,12 +199,15 @@ if __name__ == '__main__':
                 f.require_group(sample_split[image])
                 image_group = f[sample_split[image]].require_group(group_name)
                 image_group.create_dataset('X', data=X, dtype=np.float32)
+                image_group.create_dataset('Phi', data=Phi, dtype=np.float32)
                 image_group.create_dataset('corrected_image', data=corrected_image, dtype=np.float32)
                 image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
                 image_group.create_dataset('bg_mask', data=bg_mask, dtype=bool)
                 image_group.create_dataset('wavelength_nm', data=wavelength_nm, dtype=int)
+                image_group.create_dataset('laser_energy', data=cfg['LaserEnergy'][j], dtype=float)
                 
     ssr_X = 0.0
+    ssr_phi = 0.0
     ssr_corrected_image = 0.0
     ssr_mu_a = 0.0
     
@@ -206,10 +218,12 @@ if __name__ == '__main__':
             for j, image in enumerate(list(f[split].keys())):
                 denomitator = np.prod(f[split][image]['X'].shape) * n_images - 1
                 ssr_X += np.sum((f[split][image]['X'][()] - dataset_cfg['normalisation_X']['mean'])**2) / denomitator
+                ssr_phi += np.sum((f[split][image]['Phi'][()] - dataset_cfg['normalisation_Phi']['mean'])**2) / denomitator
                 ssr_corrected_image += np.sum((f[split][image]['corrected_image'][()] - dataset_cfg['normalisation_corrected_image']['mean'])**2) / denomitator
                 ssr_mu_a += np.sum((f[split][image]['mu_a'][()] - dataset_cfg['normalisation_mu_a']['mean'])**2) / denomitator
                 
     dataset_cfg['normalisation_X']['std'] = float(np.sqrt(ssr_X))
+    dataset_cfg['normalisation_Phi']['std'] = float(np.sqrt(ssr_phi))
     dataset_cfg['normalisation_corrected_image']['std'] = float(np.sqrt(ssr_corrected_image))
     dataset_cfg['normalisation_mu_a']['std'] = float(np.sqrt(ssr_mu_a))
     

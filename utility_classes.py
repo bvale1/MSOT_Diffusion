@@ -269,6 +269,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                  data_space : Literal['image','latent']='image',
                  X_transform=None,
                  Y_transform=None,
+                 fluence_transform=None,
                  mask_transform=None) -> None:
         super(SyntheticReconstructAbsorbtionDataset, self).__init__(data_path)
         self.split = split
@@ -276,6 +277,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         self.data_space = data_space
         self.X_transform = X_transform
         self.Y_transform = Y_transform
+        self.fluence_transform = fluence_transform
         self.mask_transform = mask_transform
         
         match gt_type:
@@ -299,6 +301,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         with h5py.File(self.h5_file, 'r') as f:
             X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
             Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
+            fluence = torch.from_numpy(f[self.split][self.samples[idx]]['Phi'][()])
             bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
             wavelength_nm = f[self.split][self.samples[idx]]['wavelength_nm'][()]
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
@@ -307,16 +310,21 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             X = X.unsqueeze(0)
         if Y.dim()==2:
             Y = Y.unsqueeze(0)
+        if fluence.dim()==2:
+            fluence = fluence.unsqueeze(0)
         if bg_mask.dim()==2:
             bg_mask = bg_mask.unsqueeze(0)
+            
         if self.X_transform:
             X = self.X_transform(X)
         if self.Y_transform:
             Y = self.Y_transform(Y)
+        if self.fluence_transform:
+            fluence = self.fluence_transform(fluence)
         if self.mask_transform:
             bg_mask = self.mask_transform(bg_mask)
         
-        return (X, Y, bg_mask, wavelength_nm)
+        return (X, Y, fluence, wavelength_nm, bg_mask)
     
 
 class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
@@ -355,6 +363,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                  experimental_data : bool=True,
                  X_transform=None,
                  Y_transform=None,
+                 fluence_transform=None,
                  mask_transform=None) -> None:
         
         vars(self).update(locals())
@@ -391,27 +400,35 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             signal = torch.from_numpy(np_data["features_sim"].reshape(1, 288, 288)).float()
             
         segmentation = np_data["segmentation"]
+        # 0 == coupling medium, 1 == sample_background, 1 < inclusions
         if self.stats['segmentation']['plus_one']:
-            segmentation = segmentation + 1        
-        segmentation = torch.from_numpy(segmentation).int().unsqueeze(0) != 0        
+            segmentation = segmentation + 1       
+        bg_mask = torch.from_numpy(segmentation).int().unsqueeze(0) == 1
+        inclusion_mask = torch.from_numpy(segmentation).int().unsqueeze(0) > 1
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
+        fluence = torch.from_numpy(np_data["fluence"].reshape(1, 288, 288)).float()
         wavelength_nm = int(self.files[idx // 2].split('_')[-1][:3])
-        wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
+        wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)
             
         if self.X_transform:
             signal = self.X_transform(signal)
         if self.Y_transform:
             absorption = self.Y_transform(absorption)
+        if self.fluence_transform:
+            fluence = self.fluence_transform(fluence)
         if self.mask_transform:
-            segmentation = self.mask_transform(segmentation)
+            bg_mask = self.mask_transform(bg_mask)
+            inclusion_mask = self.mask_transform(inclusion_mask)
         
         # every other sample is the same as the previous one but flipped
         if self.train and self.augment and (idx % 2 == 1):
             signal = torch.fliplr(signal)
             absorption = torch.fliplr(absorption)
-            segmentation = torch.fliplr(segmentation)
+            fluence = torch.fliplr(fluence)
+            bg_mask = torch.fliplr(bg_mask)
+            inclusion_mask = torch.fliplr(inclusion_mask)
         
-        return (signal, absorption, segmentation, wavelength_nm)
+        return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask)
 
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,

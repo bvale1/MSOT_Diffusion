@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
-    parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
+    parser.add_argument('--warmup_period', type=int, default=0, help='warmup period for the learning rate')
     parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
@@ -57,18 +57,20 @@ if __name__ == '__main__':
     np.random.seed(seed)
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if not torch.cuda.is_available():
+        raise ValueError('cuda is not available')
     logging.info(f'using device: {device}')
     
     # ==================== Data ====================
     match args.synthetic_or_experimental:
         case 'experimental':
-            (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
+            (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_e2eQPAT_dataloaders(
                 args, args.model, 
                 stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
                 fold=args.fold
             )
         case 'synthetic':
-            (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
+            (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_synthetic_dataloaders(
                 args, args.model
             )
     # ==================== Model ====================
@@ -79,27 +81,25 @@ if __name__ == '__main__':
             model = smp.Unet(
                 encoder_name='resnet101', encoder_weights='imagenet',
                 decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-                in_channels=channels, classes=channels
+                in_channels=channels, classes=channels * 2
             )
             uf.reset_weights(model)
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
-                in_channels=channels, out_channels=channels,
+                in_channels=channels, out_channels=channels * 2,
                 initial_filter_size=64, kernel_size=3
             )
         case 'UNet_wl_pos_emb':
             model = ddp.Unet(
-                dim=32, channels=channels, self_condition=False,
-                image_condition=False, full_attn=False, flash_attn=False,
-                learned_sinusoidal_cond=True
+                dim=32, channels=channels, out_dim=channels * 2,
+                self_condition=False, image_condition=False, full_attn=False,
+                flash_attn=False, learned_sinusoidal_cond=True
             )
     
     if args.load_checkpoint_dir:
-        try:
-            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
-            logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
-        except Exception as e:
-            logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
+        model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
+        logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
+            
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
@@ -108,13 +108,24 @@ if __name__ == '__main__':
     model.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
+    match args.synthetic_or_experimental:
+        case 'experimental':
+            # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=1e-4
+            )
+        case 'synthetic':
+            # I sometimes see the gradients exploding with the default Adam optimizer
+            # I think this is due to the expo
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
+            )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, verbose=True, patience=10, factor=0.9
     )
-    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #    optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
-    #)
-    #warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=2000)
+    warmup_scheduler = warmup.LinearWarmup(
+        optimizer, warmup_period=args.warmup_period
+    )
     mse_loss = nn.MSELoss(reduction='none')
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
@@ -123,36 +134,33 @@ if __name__ == '__main__':
     
     
     # ==================== Training ====================
-    # if mean val loss does not decrease after this many epochs, stop training
-    early_stop_patience = args.early_stop_patience
-    stop_counter = 0
-    prev_val_loss = np.inf
     for epoch in range(args.epochs):
         # ==================== Train epoch ====================
         model.train()
         total_train_loss = 0
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
-        for i, (X, Y, _, wavelength_nm) in enumerate(dataloaders['train']):
+        for i, batch in enumerate(dataloaders['train']):
+            (X, Y, fluence, wavelength_nm, _) = batch[:5]
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
             if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(Y, wavelength_nm.to(device).squeeze())
+                Y_hat = model(X, wavelength_nm.to(device).squeeze())
             else:
                 Y_hat = model(X)
-            loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
+            loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i*args.train_batch_size
             )
             loss = loss.mean()
             total_train_loss += loss.item()
+            loss += mse_loss(Y_hat[:, 1], fluence).mean() # add loss for second output
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            #with warmup_scheduler.dampening(): # step warmup and lr schedulers
-                #pass
-                #scheduler.step()
+            with warmup_scheduler.dampening(): # step warmup and lr schedulers
+                scheduler.step()
             if args.wandb_log:
                 wandb.log({'train_loss' : loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
@@ -164,14 +172,15 @@ if __name__ == '__main__':
         best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         with torch.no_grad():
-            for i, (X, Y, _, wavelength_nm) in enumerate(dataloaders['val']):
+            for i, batch in enumerate(dataloaders['val']):
+                (X, Y, _, wavelength_nm, _) = batch[:5]
                 X = X.to(device)
                 Y = Y.to(device)
                 if args.model == 'UNet_wl_pos_emb':
-                    Y_hat = model(Y, wavelength_nm.to(device).squeeze())
+                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 else:
                     Y_hat = model(X)
-                loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
+                loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
                 best_and_worst_examples = uf.get_best_and_worst(
                     loss, best_and_worst_examples, i*args.val_batch_size
                 )
@@ -184,18 +193,6 @@ if __name__ == '__main__':
             checkpointer(model, epoch, total_val_loss)
         logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}')
         logging.info(f'val_epoch {best_and_worst_examples}')
-        
-        # check for early stopping criterion
-        if total_val_loss >= prev_val_loss:
-            stop_counter += 1
-        else:
-            stop_counter = 0
-            
-        if stop_counter >= early_stop_patience:
-            logging.info(f'early stopping at epoch: {epoch}')
-            break
-            
-        prev_val_loss = total_val_loss
     
     # ==================== Testing ====================
     logging.info('loading checkpoint with best validation loss for testing')
@@ -204,20 +201,26 @@ if __name__ == '__main__':
     total_test_loss = 0
     best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
                                'worst' : {'index' : 0, 'loss' : -np.Inf}}
-    test_metric_calculator = uc.TestMetricCalculator()
+    bg_test_metric_calculator = uc.TestMetricCalculator()
+    inclusion_test_metric_calculator = uc.TestMetricCalculator()
     test_start_time = timeit.default_timer()
     with torch.no_grad():
-        for i, (X, Y, bg_mask, wavelength_nm) in enumerate(dataloaders['test']):
+        for i, batch in enumerate(dataloaders['test']):
+            (X, Y, _, wavelength_nm, bg_mask) = batch[:5]
             X = X.to(device)
             Y = Y.to(device)
             if args.model == 'UNet_wl_pos_emb':
                 Y_hat = model(X, wavelength_nm.to(device).squeeze())
             else:
                 Y_hat = model(X)
-            loss = mse_loss(Y_hat, Y).mean(dim=(1, 2, 3))
-            test_metric_calculator(
+            loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+            bg_test_metric_calculator(
                 Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
             )
+            if args.synthetic_or_experimental == 'experimental':
+                inclusion_test_metric_calculator(
+                    Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                )
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i
             )
@@ -230,12 +233,17 @@ if __name__ == '__main__':
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
-    logging.info(f'test_metrics: {test_metric_calculator.get_metrics()}')
-    test_metric_calculator.save_metrics_all_test_samples(
-        os.path.join(args.save_dir, 'test_metrics.json')
+    logging.info(f'background_test_metrics: {bg_test_metric_calculator.get_metrics()}')
+    bg_test_metric_calculator.save_metrics_all_test_samples(
+        os.path.join(args.save_dir, 'background_test_metrics.json')
+    )
+    logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
+    inclusion_test_metric_calculator.save_metrics_all_test_samples(
+        os.path.join(args.save_dir, 'inclusion_test_metrics.json')
     )
     if args.wandb_log:
-        wandb.log(test_metric_calculator.get_metrics())
+        wandb.log(bg_test_metric_calculator.get_metrics())
+        wandb.log(inclusion_test_metric_calculator.get_metrics())
         wandb.log({'test_time' : total_test_time,
                    'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
@@ -250,9 +258,9 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, mask_0, wavelength_nm_0) = datasets['test'][0]
-        (X_1, Y_1, mask_1, wavelength_nm_1) = datasets['test'][1]
-        (X_2, Y_2, mask_2, wavelength_nm_2) = datasets['test'][2]
+        (X_0, Y_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
+        (X_1, Y_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
+        (X_2, Y_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
         (X_best, Y_best, mask_best, wavelength_nm_best) = datasets['test'][best_and_worst_examples['best']['index']]
         (X_worst, Y_worst, mask_worst, wavelength_nm_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
