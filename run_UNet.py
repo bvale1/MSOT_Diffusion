@@ -141,8 +141,7 @@ if __name__ == '__main__':
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         for i, batch in enumerate(dataloaders['train']):
             (X, Y, fluence, wavelength_nm, _) = batch[:5]
-            X = X.to(device)
-            Y = Y.to(device)
+            X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
             optimizer.zero_grad()
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
@@ -151,20 +150,23 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
-            loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+            mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
-                loss, best_and_worst_examples, i*args.train_batch_size
+                mu_a_loss, best_and_worst_examples, i*args.train_batch_size
             )
-            loss = loss.mean()
-            total_train_loss += loss.item()
-            loss += mse_loss(Y_hat[:, 1], fluence).mean() # add loss for second output
+            mu_a_loss = mu_a_loss.mean()
+            fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
+            loss = mu_a_loss + fluence_loss
+            total_train_loss += loss.item()            
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             with warmup_scheduler.dampening(): # step warmup and lr schedulers
                 scheduler.step()
             if args.wandb_log:
-                wandb.log({'train_loss' : loss.item()})
+                wandb.log({'train_tot_loss' : loss.item(),
+                           'train_mu_a_loss' : mu_a_loss.item(),
+                           'train_fluence_loss' : fluence_loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         logging.info(f'train_epoch {best_and_worst_examples}')
         
@@ -175,9 +177,8 @@ if __name__ == '__main__':
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         with torch.no_grad():
             for i, batch in enumerate(dataloaders['val']):
-                (X, Y, _, wavelength_nm, _) = batch[:5]
-                X = X.to(device)
-                Y = Y.to(device)
+                (X, Y, fluence, wavelength_nm, _) = batch[:5]
+                X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
                 match args.model:
                     case 'UNet_smp' | 'UNet_e2eQPAT':
                         Y_hat = model(X)
@@ -185,14 +186,18 @@ if __name__ == '__main__':
                         Y_hat = model(X, wavelength_nm.to(device).squeeze())
                     case 'UNet_diffusion_ablation':
                         Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
-                loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+                mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+                fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
                 best_and_worst_examples = uf.get_best_and_worst(
-                    loss, best_and_worst_examples, i*args.val_batch_size
+                    mu_a_loss, best_and_worst_examples, i*args.val_batch_size
                 )
-                loss = loss.mean()
+                mu_a_loss = mu_a_loss.mean()
+                loss = mu_a_loss + fluence_loss
                 total_val_loss += loss.item()
                 if args.wandb_log:
-                    wandb.log({'val_loss' : loss.item()})
+                    wandb.log({'val_tot_loss' : loss.item(),
+                               'val_mu_a_loss' : mu_a_loss.item(),
+                               'val_fluence_loss' : fluence_loss.item()})
         total_val_loss /= len(dataloaders['val'])
         if args.save_dir: # save model checkpoint if validation loss is lower
             checkpointer(model, epoch, total_val_loss)
@@ -211,9 +216,8 @@ if __name__ == '__main__':
     test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
-            (X, Y, _, wavelength_nm, bg_mask) = batch[:5]
-            X = X.to(device)
-            Y = Y.to(device)
+            (X, Y, fluence, wavelength_nm, bg_mask) = batch[:5]
+            X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
@@ -221,7 +225,8 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
-            loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+            mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+            fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
             bg_test_metric_calculator(
                 Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
             )
@@ -230,25 +235,29 @@ if __name__ == '__main__':
                     Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
-                loss, best_and_worst_examples, i
+                mu_a_loss, best_and_worst_examples, i
             )
-            loss = loss.mean()
+            mu_a_loss = mu_a_loss.mean()            
+            loss = mu_a_loss + fluence_loss
             total_test_loss += loss.item()
             if args.wandb_log:
-                wandb.log({'test_loss' : loss.item()})
+                wandb.log({'test_tot_loss' : loss.item(),
+                           'test_mu_a_loss' : mu_a_loss.item(),
+                           'test_fluence_loss' : fluence_loss.item()})
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'test_time: {total_test_time}')
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'background_test_metrics: {bg_test_metric_calculator.get_metrics()}')
-    bg_test_metric_calculator.save_metrics_all_test_samples(
-        os.path.join(args.save_dir, 'background_test_metrics.json')
-    )
     logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
-    inclusion_test_metric_calculator.save_metrics_all_test_samples(
-        os.path.join(args.save_dir, 'inclusion_test_metrics.json')
-    )
+    if args.save_dir:
+        bg_test_metric_calculator.save_metrics_all_test_samples(
+            os.path.join(args.save_dir, 'background_test_metrics.json')
+        )    
+        inclusion_test_metric_calculator.save_metrics_all_test_samples(
+            os.path.join(args.save_dir, 'inclusion_test_metrics.json')
+        )
     if args.wandb_log:
         wandb.log(bg_test_metric_calculator.get_metrics())
         wandb.log(inclusion_test_metric_calculator.get_metrics())

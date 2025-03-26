@@ -1,5 +1,6 @@
 # Description: This script is used to scroll through the synthetic images for
 # visual inspection. It is used to check the quality of the synthetic images
+# It also written with the possibility of being adapted for data annotation
 
 import glob
 import os
