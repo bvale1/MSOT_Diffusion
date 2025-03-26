@@ -35,8 +35,9 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
     parser.add_argument('--use_autoencoder_dir', type=str, default=None, help='path to autoencoder model')
-    parser.add_argument('--early_stop_patience', type=int, default=np.inf, help='early stopping patience')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
+    parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
+    parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
 
     args = parser.parse_args()
     var_args = vars(args)
@@ -68,19 +69,18 @@ if __name__ == '__main__':
                 logging.error('autoencoder not supported for experimental data')
                 raise NotImplementedError
             else:
-                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_e2eQPAT_dataloaders(
+                (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_e2eQPAT_dataloaders(
                     args, model_name='DDIM', 
-                    stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
-                    fold=0
+                    stats_path=os.path.join(args.root_dir, 'dataset_stats.json')
                 )
         case 'synthetic':
             if args.use_autoencoder_dir:
                 (datasets, dataloaders) = uf.create_embedding_dataloaders(args)
-                (image_datasets, image_dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
+                (image_datasets, image_dataloaders, normalise_x, normalise_y, _) = uf.create_synthetic_dataloaders(
                     args=args, model_name='LDDIM'
                 )
             else:
-                (datasets, dataloaders, normalise_x, normalise_y) = uf.create_synthetic_dataloaders(
+                (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_synthetic_dataloaders(
                     args=args, model_name='DDIM'
                 )
     
@@ -88,7 +88,8 @@ if __name__ == '__main__':
     input_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
     channels = datasets['test'][0][0].shape[-3]
     model = ddp.Unet(
-        dim=32, channels=channels, self_condition=args.self_condition,
+        dim=32, channels=channels, out_dim=channels * 2,
+        self_condition=args.self_condition,
         image_condition=True, full_attn=False, flash_attn=False
     )
     diffusion = ddp.GaussianDiffusion(
@@ -116,7 +117,7 @@ if __name__ == '__main__':
         image_channels = image_datasets['train'][0][0].shape[-3]
         logging.info(f'loading autoencoder from {args.use_autoencoder_dir}')
         vqvae = VQVAE(
-            in_channels=image_channels, embedding_dim=channels, num_embeddings=512,
+            in_channels=image_channels, embedding_dim=channels * 2, num_embeddings=512,
             beta=0.25, img_size=image_size[0]
         )
         vqvae.load_state_dict(torch.load(args.use_autoencoder_dir, weights_only=True))
@@ -124,23 +125,29 @@ if __name__ == '__main__':
         vqvae.eval()
     
     # ==================== Optimizer ====================
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=args.lr, betas=(0.9, 0.99), eps=1e-8, amsgrad=True
+    match args.synthetic_or_experimental:
+        case 'experimental':
+            # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=1e-4
+            )
+        case 'synthetic':
+            # Gives a bit better convergance than default Adam in my experience
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
+            )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, verbose=True, patience=10, factor=0.9
     )
-    #scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    #    optimizer, T_max=args.epochs*len(dataloaders['train']), eta_min=1e-6
-    #)
-    #warmup_scheduler = warmup.LinearWarmup(optimizer, warmup_period=2000)
+    warmup_scheduler = warmup.LinearWarmup(
+        optimizer, warmup_period=args.warmup_period
+    )
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
             json.dump(var_args, f, indent=4)
     
     # ==================== Training ====================
-    # if mean val loss does not decrease after this many epochs, stop training
-    early_stop_patience = args.early_stop_patience
-    stop_counter = 0
-    prev_val_loss = np.inf
     for epoch in range(args.epochs):
         total_train_loss = 0
         # ==================== Train epoch ====================
@@ -148,19 +155,20 @@ if __name__ == '__main__':
         for i, batch in enumerate(dataloaders['train']):
             X = batch[0].to(device)
             Y = batch[1].to(device)
+            fluence = batch[2].to(device)
             if args.use_autoencoder_dir:
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
+                fluence, _ = vqvae.vq_layer(fluence)
             optimizer.zero_grad()
             # the objective is to generate Y from Gaussian noise, conditioned on X
-            loss = diffusion.forward(Y, x_cond=X)
+            loss = diffusion.forward(torch.cat((Y, fluence), dim=1), x_cond=X)
             total_train_loss += loss.item()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            #with warmup_scheduler.dampening(): # step warmup and lr schedulers
-                #pass
-                #scheduler.step()
+            with warmup_scheduler.dampening(): # step warmup and lr schedulers
+                scheduler.step()
             if args.wandb_log:
                 wandb.log(
                     {'train_loss' : loss.item()}
@@ -180,13 +188,16 @@ if __name__ == '__main__':
                 for i, batch in enumerate(dataloaders['val']):
                     X = batch[0].to(device)
                     Y = batch[1].to(device)
+                    fluence = batch[2].to(device)
                     if args.use_autoencoder_dir:
                         X, _ = vqvae.vq_layer(X)
                         Y, _ = vqvae.vq_layer(Y)
+                        fluence, _ = vqvae.vq_layer(fluence)
                     Y_hat = diffusion.sample(
                         batch_size=X.shape[0], x_cond=X
                     )
-                    loss = F.mse_loss(Y_hat, Y, reduction='none').mean(dim=(1, 2, 3))
+                    loss = F.mse_loss(Y_hat, torch.cat((Y, fluence), dim=1), 
+                                      reduction='none').mean(dim=(1, 2, 3))
                     best_and_worst_examples = uf.get_best_and_worst(
                         loss, best_and_worst_examples, i*args.val_batch_size
                     )
@@ -198,7 +209,7 @@ if __name__ == '__main__':
                         Y_image = next(image_val_iter)[1].to(device)
                         Y_hat, _ = vqvae.vq_layer(Y_hat)
                         Y_hat = vqvae.decode(Y_hat)
-                        loss_rec = F.mse_loss(Y_hat, Y_image)
+                        loss_rec = F.mse_loss(Y_hat[:, 0], Y_image)
                         total_val_loss_rec += loss_rec.item()
                         if args.wandb_log:
                             wandb.log({'val_loss_rec' : loss_rec.item()})
@@ -210,18 +221,6 @@ if __name__ == '__main__':
             if args.use_autoencoder_dir:
                 logging.info(f'mean_val_loss_rec: {total_val_loss_rec/len(dataloaders['val'])}')
             logging.info(f'val_epoch {best_and_worst_examples}')
-            
-            # check for early stopping criterion
-            if total_val_loss > prev_val_loss:
-                stop_counter += 1
-            else:
-                stop_counter = 0
-                
-            if stop_counter >= early_stop_patience:
-                logging.info(f'early stopping at epoch: {epoch}')
-                break
-                
-            prev_val_loss = total_val_loss
     
     # ==================== Testing ====================
     logging.info('loading checkpoint with best validation loss for testing')
@@ -294,30 +293,29 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, mask_0, _) = datasets['test'][0]
-        (X_1, Y_1, mask_1, _) = datasets['test'][1]
-        (X_2, Y_2, mask_2, _) = datasets['test'][2]
-        (X_best, Y_best, mask_best, _) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst, mask_worst, _) = datasets['test'][best_and_worst_examples['worst']['index']]
+        (X_0, Y_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
+        (X_1, Y_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
+        (X_2, Y_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
+        (X_best, Y_best, _, wavelength_nm_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']][:5]
+        (X_worst, Y_worst, _, wavelength_nm_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']][:5]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
+        wavelength_nm = torch.stack(
+            (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
+             wavelength_nm_best, wavelength_nm_worst), dim=0
+        )
         with torch.no_grad():
             if args.use_autoencoder_dir:
                 X, _ = vqvae.vq_layer(X)
                 Y, _ = vqvae.vq_layer(Y)
+                fluence, _ = vqvae.vq_layer(fluence)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-        if args.use_autoencoder_dir:
-            with torch.no_grad():
+            if args.use_autoencoder_dir:
                 Y_hat, _ = vqvae.vq_layer(Y_hat)
-                Y_hat = vqvae.decode(Y_hat)
-            (X_0, Y_0) = image_datasets['test'][0]
-            (X_best, Y_best) = image_datasets['test'][best_and_worst_examples['best']['index']]
-            (X_worst, Y_worst) = image_datasets['test'][best_and_worst_examples['worst']['index']]
-            X = torch.stack((X_0, X_best, X_worst), dim=0).to(device)
-            Y = torch.stack((Y_0, Y_best, Y_worst), dim=0).to(device)            
+                Y_hat = vqvae.decode(Y_hat)          
         uf.plot_test_examples(
-            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
+            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat[:, 0],
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example1', 'test_example2',

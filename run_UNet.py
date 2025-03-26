@@ -33,9 +33,10 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--warmup_period', type=int, default=0, help='warmup period for the learning rate')
-    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb'], default='UNet_smp', help='model to train')
+    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb', 'Unet_diffusion_ablation'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
+    parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -66,8 +67,7 @@ if __name__ == '__main__':
         case 'experimental':
             (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_e2eQPAT_dataloaders(
                 args, args.model, 
-                stats_path=os.path.join(args.root_dir, 'dataset_stats.json'),
-                fold=args.fold
+                stats_path=os.path.join(args.root_dir, 'dataset_stats.json')
             )
         case 'synthetic':
             (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_synthetic_dataloaders(
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                 in_channels=channels, out_channels=channels * 2,
                 initial_filter_size=64, kernel_size=3
             )
-        case 'UNet_wl_pos_emb':
+        case 'UNet_wl_pos_emb' | 'Unet_diffusion_ablation':
             model = ddp.Unet(
                 dim=32, channels=channels, out_dim=channels * 2,
                 self_condition=False, image_condition=False, full_attn=False,
@@ -115,8 +115,7 @@ if __name__ == '__main__':
                 model.parameters(), lr=1e-4
             )
         case 'synthetic':
-            # I sometimes see the gradients exploding with the default Adam optimizer
-            # I think this is due to the expo
+            # Gives a bit better convergance than default Adam in my experience
             optimizer = torch.optim.Adam(
                 model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
             )
@@ -145,10 +144,13 @@ if __name__ == '__main__':
             X = X.to(device)
             Y = Y.to(device)
             optimizer.zero_grad()
-            if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(X, wavelength_nm.to(device).squeeze())
-            else:
-                Y_hat = model(X)
+            match args.model:
+                case 'UNet_smp' | 'UNet_e2eQPAT':
+                    Y_hat = model(X)
+                case 'UNet_wl_pos_emb':
+                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
+                case 'UNet_diffusion_ablation':
+                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
             loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 loss, best_and_worst_examples, i*args.train_batch_size
@@ -176,10 +178,13 @@ if __name__ == '__main__':
                 (X, Y, _, wavelength_nm, _) = batch[:5]
                 X = X.to(device)
                 Y = Y.to(device)
-                if args.model == 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
-                else:
-                    Y_hat = model(X)
+                match args.model:
+                    case 'UNet_smp' | 'UNet_e2eQPAT':
+                        Y_hat = model(X)
+                    case 'UNet_wl_pos_emb':
+                        Y_hat = model(X, wavelength_nm.to(device).squeeze())
+                    case 'UNet_diffusion_ablation':
+                        Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
                 loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
                 best_and_worst_examples = uf.get_best_and_worst(
                     loss, best_and_worst_examples, i*args.val_batch_size
@@ -209,10 +214,13 @@ if __name__ == '__main__':
             (X, Y, _, wavelength_nm, bg_mask) = batch[:5]
             X = X.to(device)
             Y = Y.to(device)
-            if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(X, wavelength_nm.to(device).squeeze())
-            else:
-                Y_hat = model(X)
+            match args.model:
+                case 'UNet_smp' | 'UNet_e2eQPAT':
+                    Y_hat = model(X)
+                case 'UNet_wl_pos_emb':
+                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
+                case 'UNet_diffusion_ablation':
+                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
             loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             bg_test_metric_calculator(
                 Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
@@ -261,8 +269,8 @@ if __name__ == '__main__':
         (X_0, Y_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
         (X_1, Y_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
         (X_2, Y_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
-        (X_best, Y_best, mask_best, wavelength_nm_best) = datasets['test'][best_and_worst_examples['best']['index']]
-        (X_worst, Y_worst, mask_worst, wavelength_nm_worst) = datasets['test'][best_and_worst_examples['worst']['index']]
+        (X_best, Y_best, _, wavelength_nm_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']][:5]
+        (X_worst, Y_worst, _, wavelength_nm_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']][:5]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
         Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
@@ -271,12 +279,15 @@ if __name__ == '__main__':
              wavelength_nm_best, wavelength_nm_worst), dim=0
         )
         with torch.no_grad():
-            if args.model == 'UNet_wl_pos_emb':
-                Y_hat = model(X, wavelength_nm.squeeze())
-            else:
-                Y_hat = model.forward(X)
+            match args.model:
+                case 'UNet_smp' | 'UNet_e2eQPAT':
+                    Y_hat = model(X)
+                case 'UNet_wl_pos_emb':
+                    Y_hat = model(X, wavelength_nm.squeeze())
+                case 'UNet_diffusion_ablation':
+                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
         uf.plot_test_examples(
-            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat,
+            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat[:, 0],
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example1', 'test_example2',

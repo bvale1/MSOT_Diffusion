@@ -93,8 +93,8 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     if args.wandb_log:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion', name=model_name, 
-            save_code=True, reinit=True, config=vars(args)
+            project='MSOT_Diffusion', name=f'{model_name}_{args.fold}', 
+            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     
     with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
@@ -196,13 +196,12 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
 
 def create_e2eQPAT_dataloaders(args : argparse.Namespace,
                                model_name : str, 
-                               stats_path : str,
-                               fold : Literal['0', '1', '2', '3', '4']) -> tuple:
+                               stats_path : str) -> tuple:
     if args.wandb_log:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion', name=f'{model_name}_fold{fold}', 
-            save_code=True, reinit=True, config=vars(args)
+            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
+            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     
     with open(stats_path, 'r') as f:
