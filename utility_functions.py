@@ -161,17 +161,17 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, gt_type='mu_a', split='train', data_space='image',
+            args.root_dir, split='train', data_space='image', fold=args.fold,
             X_transform=x_transform, Y_transform=y_transform, 
             fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, gt_type='mu_a', split='val', data_space='image',
+            args.root_dir, split='val', data_space='image', fold=args.fold,
             X_transform=x_transform, Y_transform=y_transform, 
             fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, gt_type='mu_a', split='test', data_space='image',
+            args.root_dir, split='test', data_space='image', fold=args.fold,
             X_transform=x_transform, Y_transform=y_transform, 
             fluence_transform=fluence_transform, mask_transform=mask_transform
         ),
@@ -269,21 +269,21 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     datasets = {
         'train' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'training'),
-            stats=stats, fold=int(fold), train=True, augment=True,
+            stats=stats, fold=int(args.fold), train=True, augment=True,
             use_all_data=False, experimental_data=True, X_transform=x_transform,
             Y_transform=y_transform, fluence_transform=fluence_transform,
             mask_transform=mask_transform
         ),
         'val' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'training'),
-            stats=stats, fold=int(fold), train=False, augment=False,
+            stats=stats, fold=int(args.fold), train=False, augment=False,
             use_all_data=False, experimental_data=True, X_transform=x_transform, 
             Y_transform=y_transform, fluence_transform=fluence_transform,
             mask_transform=mask_transform
         ),
         'test' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.root_dir, 'test'),
-            stats=stats, fold=int(fold), train=False, augment=False,
+            stats=stats, fold=int(args.fold), train=False, augment=False,
             use_all_data=True, experimental_data=True, X_transform=x_transform, 
             Y_transform=y_transform, fluence_transform=fluence_transform,
             mask_transform=mask_transform
@@ -310,26 +310,26 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
 def create_embedding_dataloaders(args) -> tuple:
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='train', gt_type='mu_a', data_space='latent'
+            args.root_dir, split='train', data_space='latent', fold=args.fold
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='val', gt_type='mu_a', data_space='latent'
+            args.root_dir, split='val', data_space='latent', fold=args.fold
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='test', gt_type='mu_a', data_space='latent'
+            args.root_dir, split='test', data_space='latent', fold=args.fold
         )
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=20
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 
-            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'test' : DataLoader(
-            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=20
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
         )
     }
     return (datasets, dataloaders)

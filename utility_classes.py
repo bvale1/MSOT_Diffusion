@@ -265,45 +265,37 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
     # images of digimouse and ImageNet digital phantoms
     def __init__(self, data_path : str,
                  split : Literal['train', 'val', 'test']='train',
-                 gt_type : Literal['fluence_correction', 'mu_a']='mu_a',
                  data_space : Literal['image','latent']='image',
+                 fold : Literal[0, 1, 2, 3, 4]=0,
                  X_transform=None,
                  Y_transform=None,
                  fluence_transform=None,
                  mask_transform=None) -> None:
         super(SyntheticReconstructAbsorbtionDataset, self).__init__(data_path)
         self.split = split
-        self.gt_type = gt_type
         self.data_space = data_space
+        self.fold = fold
         self.X_transform = X_transform
         self.Y_transform = Y_transform
         self.fluence_transform = fluence_transform
         self.mask_transform = mask_transform
-        
-        match gt_type:
-            case 'fluence_correction':
-                # 'corrected_image' is the image 'X' divided by the fluence 'Phi'
-                self.get_Y = lambda f, sample: f[self.split][sample]['corrected_image'][()]
-            case 'mu_a':
-                self.get_Y = lambda f, sample: f[self.split][sample]['mu_a'][()]
-        
+                
         match data_space:
             case 'image':
                 self.h5_file = os.path.join(self.path, 'dataset.h5')
             case 'latent':
                 self.h5_file = os.path.join(self.path, 'embeddings.h5')
-                self.get_Y = lambda f, sample: f[self.split][sample]['Y'][()]
                 
         with h5py.File(self.h5_file, 'r') as f:
-            self.samples = list(f[split].keys())
+            self.samples = f[split][fold]['sample_names'][:].tolist()
                 
     def __getitem__(self, idx : int) -> tuple:
         with h5py.File(self.h5_file, 'r') as f:
-            X = torch.from_numpy(f[self.split][self.samples[idx]]['X'][()])
-            Y = torch.from_numpy(self.get_Y(f, self.samples[idx]))
-            fluence = torch.from_numpy(f[self.split][self.samples[idx]]['Phi'][()])
-            bg_mask = torch.from_numpy(f[self.split][self.samples[idx]]['bg_mask'][()])
-            wavelength_nm = f[self.split][self.samples[idx]]['wavelength_nm'][()]
+            X = torch.from_numpy(f[self.samples[idx]]['X'][()])
+            Y = torch.from_numpy(f[self.samples[idx]]['mu_a'][()])
+            fluence = torch.from_numpy(f[self.samples[idx]]['Phi'][()])
+            bg_mask = torch.from_numpy(f[self.samples[idx]]['bg_mask'][()])
+            wavelength_nm = f[self.samples[idx]]['wavelength_nm'][()]
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
         
         if X.dim()==2: # add channel dimension
