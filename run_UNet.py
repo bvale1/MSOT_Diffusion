@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--warmup_period', type=int, default=0, help='warmup period for the learning rate')
-    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb', 'Unet_diffusion_ablation'], default='UNet_smp', help='model to train')
+    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation'], default='UNet_smp', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                 in_channels=channels, out_channels=channels * 2,
                 initial_filter_size=64, kernel_size=3
             )
-        case 'UNet_wl_pos_emb' | 'Unet_diffusion_ablation':
+        case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
             model = ddp.Unet(
                 dim=32, channels=channels, out_dim=channels * 2,
                 self_condition=False, image_condition=False, full_attn=False,
