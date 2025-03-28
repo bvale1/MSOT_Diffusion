@@ -150,7 +150,7 @@ if __name__ == '__main__':
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
+                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
             mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i*args.train_batch_size
@@ -187,7 +187,7 @@ if __name__ == '__main__':
                     case 'UNet_wl_pos_emb':
                         Y_hat = model(X, wavelength_nm.to(device).squeeze())
                     case 'UNet_diffusion_ablation':
-                        Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
+                        Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
                 mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
                 fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
                 best_and_worst_examples = uf.get_best_and_worst(
@@ -227,7 +227,7 @@ if __name__ == '__main__':
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
+                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
             mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
             bg_test_metric_calculator(
@@ -297,7 +297,7 @@ if __name__ == '__main__':
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros_like(wavelength_nm, device=device))
+                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat[:, 0],
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
