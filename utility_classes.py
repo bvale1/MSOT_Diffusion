@@ -291,11 +291,11 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                 
     def __getitem__(self, idx : int) -> tuple:
         with h5py.File(self.h5_file, 'r') as f:
-            X = torch.from_numpy(f['sample'][self.samples[idx]]['X'][()])
-            Y = torch.from_numpy(f['sample'][self.samples[idx]]['mu_a'][()])
-            fluence = torch.from_numpy(f['sample'][self.samples[idx]]['Phi'][()])
+            X = torch.from_numpy(f['samples'][self.samples[idx]]['X'][()])
+            Y = torch.from_numpy(f['samples'][self.samples[idx]]['mu_a'][()])
+            fluence = torch.from_numpy(f['samples'][self.samples[idx]]['Phi'][()])
             bg_mask = torch.from_numpy(f['samples'][self.samples[idx]]['bg_mask'][()])
-            wavelength_nm = f['sample'][self.samples[idx]]['wavelength_nm'][()]
+            wavelength_nm = f['samples'][self.samples[idx]]['wavelength_nm'][()]
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
         
         if X.dim()==2: # add channel dimension
