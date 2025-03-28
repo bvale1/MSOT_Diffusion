@@ -77,9 +77,9 @@ if __name__ == '__main__':
     input_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
     channels = datasets['test'][0][0].shape[-3]
     model = ddp.Unet(
-        dim=32, channels=channels, out_dim=channels * 2,
-        self_condition=args.self_condition,
-        image_condition=True, full_attn=False, flash_attn=False
+        dim=32, channels=channels * 2, out_dim=channels * 2,
+        self_condition=args.self_condition, image_condition=True, 
+        image_condition_channels=channels, full_attn=False, flash_attn=False
     )
     diffusion = ddp.GaussianDiffusion(
         # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
