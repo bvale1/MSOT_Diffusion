@@ -115,9 +115,10 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, verbose=True, patience=10, factor=0.9
     )
-    warmup_scheduler = warmup.LinearWarmup(
-        optimizer, warmup_period=args.warmup_period
-    )
+    if args.warmup_period > 1:
+        warmup_scheduler = warmup.LinearWarmup(
+            optimizer, warmup_period=args.warmup_period
+        )
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
@@ -145,8 +146,9 @@ if __name__ == '__main__':
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            with warmup_scheduler.dampening(): # step warmup and lr schedulers
-                scheduler.step()
+            if args.warmup_period > 1:
+                with warmup_scheduler.dampening(): # step warmup scheduler
+                    pass
             if args.wandb_log:
                 wandb.log(
                     {'val_tot_loss' : loss.item(),
@@ -182,10 +184,11 @@ if __name__ == '__main__':
                                    'val_fluence_loss' : fluence_loss.item()})
                        
             total_val_loss /= len(dataloaders['val'])
+            scheduler.step(total_val_loss) # lr scheduler
             if args.save_dir: # save model checkpoint if validation loss is lower
                 checkpointer(model, epoch, total_val_loss)
             logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}')
-            logging.info(f'val_epoch {best_and_worst_examples}')
+            logging.info(f'val_epoch {best_and_worst_examples}')            
     
     # ==================== Testing ====================
     logging.info('loading checkpoint with best validation loss for testing')
