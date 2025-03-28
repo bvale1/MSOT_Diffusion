@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--save_dir', type=str, default='DDPM_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to a model checkpoint to load')
-    parser.add_argument('--warmup_period', type=int, default=0, help='warmup period for the learning rate')
+    parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must int be greater than 0')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
