@@ -287,15 +287,15 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                 self.h5_file = os.path.join(self.path, 'embeddings.h5')
                 
         with h5py.File(self.h5_file, 'r') as f:
-            self.samples = f[split][fold]['sample_names'][:].tolist()
+            self.samples = f[split][str(fold)]['sample_names'][:].tolist()
                 
     def __getitem__(self, idx : int) -> tuple:
         with h5py.File(self.h5_file, 'r') as f:
-            X = torch.from_numpy(f[self.samples[idx]]['X'][()])
-            Y = torch.from_numpy(f[self.samples[idx]]['mu_a'][()])
-            fluence = torch.from_numpy(f[self.samples[idx]]['Phi'][()])
-            bg_mask = torch.from_numpy(f[self.samples[idx]]['bg_mask'][()])
-            wavelength_nm = f[self.samples[idx]]['wavelength_nm'][()]
+            X = torch.from_numpy(f['sample'][self.samples[idx]]['X'][()])
+            Y = torch.from_numpy(f['sample'][self.samples[idx]]['mu_a'][()])
+            fluence = torch.from_numpy(f['sample'][self.samples[idx]]['Phi'][()])
+            bg_mask = torch.from_numpy(f['samples'][self.samples[idx]]['bg_mask'][()])
+            wavelength_nm = f['sample'][self.samples[idx]]['wavelength_nm'][()]
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)    
         
         if X.dim()==2: # add channel dimension
