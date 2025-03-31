@@ -138,7 +138,7 @@ if __name__ == '__main__':
             mu_a_loss = loss[:, 0]
             fluence_loss = loss[:, 1].mean()
             best_and_worst_examples = uf.get_best_and_worst(
-                mu_a_loss, best_and_worst_examples, i*args.val_batch_size
+                mu_a_loss.copy().detach(), best_and_worst_examples, i*args.val_batch_size
             )
             mu_a_loss = loss.mean()
             loss = mu_a_loss + fluence_loss
@@ -187,7 +187,7 @@ if __name__ == '__main__':
             scheduler.step(total_val_loss) # lr scheduler
             if args.save_dir: # save model checkpoint if validation loss is lower
                 checkpointer(model, epoch, total_val_loss)
-            logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}')
+            logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}, lr: {scheduler.get_last_lr()}')
             logging.info(f'val_epoch {best_and_worst_examples}')            
     
     # ==================== Testing ====================
@@ -208,11 +208,11 @@ if __name__ == '__main__':
             mu_a_loss = F.mse_loss(Y, Y_hat[:, 0], reduction='none').mean(dim=(1, 2, 3))
             fluence_loss = F.mse_loss(fluence, Y_hat[:, 1], reduction='none').mean()
             bg_test_metric_calculator(
-                Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
+                Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
             )
             if args.synthetic_or_experimental == 'experimental':
                 inclusion_test_metric_calculator(
-                    Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                    Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i

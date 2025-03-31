@@ -153,7 +153,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
             mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
-                mu_a_loss, best_and_worst_examples, i*args.train_batch_size
+                mu_a_loss.copy(), best_and_worst_examples, i*args.train_batch_size
             )
             mu_a_loss = mu_a_loss.mean()
             fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
@@ -191,7 +191,7 @@ if __name__ == '__main__':
                 mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
                 fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
                 best_and_worst_examples = uf.get_best_and_worst(
-                    mu_a_loss, best_and_worst_examples, i*args.val_batch_size
+                    mu_a_loss.copy().detach(), best_and_worst_examples, i*args.val_batch_size
                 )
                 mu_a_loss = mu_a_loss.mean()
                 loss = mu_a_loss + fluence_loss
@@ -204,7 +204,7 @@ if __name__ == '__main__':
         scheduler.step(total_val_loss) # lr scheduler
         if args.save_dir: # save model checkpoint if validation loss is lower
             checkpointer(model, epoch, total_val_loss)
-        logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}')
+        logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}, lr: {scheduler.get_last_lr()}')
         logging.info(f'val_epoch {best_and_worst_examples}')
     
     # ==================== Testing ====================
@@ -231,11 +231,11 @@ if __name__ == '__main__':
             mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
             bg_test_metric_calculator(
-                Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
+                Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
             )
             if args.synthetic_or_experimental == 'experimental':
                 inclusion_test_metric_calculator(
-                    Y=Y, Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                    Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i

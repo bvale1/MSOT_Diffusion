@@ -178,15 +178,15 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 
-            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the test set so batch size can be larger
         'test' : DataLoader(
-            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         )
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
@@ -291,15 +291,15 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 
-            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the test set so batch size can be larger
         'test' : DataLoader(
-            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         )
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
@@ -321,15 +321,15 @@ def create_embedding_dataloaders(args) -> tuple:
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=6
+            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 
-            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['val'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'test' : DataLoader(
-            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=6
+            datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         )
     }
     return (datasets, dataloaders)
