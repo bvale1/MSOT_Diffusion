@@ -126,9 +126,11 @@ if __name__ == '__main__':
     
     # ==================== Training ====================
     for epoch in range(args.epochs):
-        total_train_loss = 0
         # ==================== Train epoch ====================
         model.train()
+        total_train_loss = 0
+        best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
+                                   'worst' : {'index' : 0, 'loss' : -np.Inf}}
         for i, batch in enumerate(dataloaders['train']):
             X = batch[0].to(device); Y = batch[1].to(device)
             fluence = batch[2].to(device)
