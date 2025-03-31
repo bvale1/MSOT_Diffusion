@@ -138,7 +138,7 @@ if __name__ == '__main__':
             mu_a_loss = loss[:, 0]
             fluence_loss = loss[:, 1].mean()
             best_and_worst_examples = uf.get_best_and_worst(
-                mu_a_loss.copy().detach(), best_and_worst_examples, i*args.val_batch_size
+                mu_a_loss.clone().detach(), best_and_worst_examples, i*args.val_batch_size
             )
             mu_a_loss = loss.mean()
             loss = mu_a_loss + fluence_loss

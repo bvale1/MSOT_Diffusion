@@ -153,7 +153,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
             mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
-                mu_a_loss.copy().detach(), best_and_worst_examples, i*args.train_batch_size
+                mu_a_loss.clone().detach(), best_and_worst_examples, i*args.train_batch_size
             )
             mu_a_loss = mu_a_loss.mean()
             fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
