@@ -153,9 +153,9 @@ if __name__ == '__main__':
                     pass
             if args.wandb_log:
                 wandb.log(
-                    {'val_tot_loss' : loss.item(),
-                     'val_mu_a_loss' : mu_a_loss.item(),
-                     'val_fluence_loss' : fluence_loss.item()}
+                    {'train_tot_loss' : loss.item(),
+                     'train_mu_a_loss' : mu_a_loss.item(),
+                     'train_fluence_loss' : fluence_loss.item()}
                 )
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         

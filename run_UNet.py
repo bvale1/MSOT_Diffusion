@@ -138,7 +138,8 @@ if __name__ == '__main__':
         # ==================== Train epoch ====================
         model.train()
         total_train_loss = 0
-        
+        best_and_worst_examples = {'best' : {'index' : 0, 'loss' : np.Inf},
+                                   'worst' : {'index' : 0, 'loss' : -np.Inf}}
         for i, batch in enumerate(dataloaders['train']):
             (X, Y, fluence, wavelength_nm, _) = batch[:5]
             X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
