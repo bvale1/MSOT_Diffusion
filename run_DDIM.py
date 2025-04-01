@@ -167,13 +167,16 @@ if __name__ == '__main__':
                                        'worst' : {'index' : 0, 'loss' : -np.Inf}}
             with torch.no_grad():
                 for i, batch in enumerate(dataloaders['val']):
-                    X = batch[0].to(device); Y = batch[1].to(device)
+                    X = batch[0].to(device); mu_a = batch[1].to(device)
                     fluence = batch[2].to(device)
                     Y_hat = diffusion.sample(
                         batch_size=X.shape[0], x_cond=X
                     )
-                    mu_a_loss = F.mse_loss(Y_hat[:, 0], Y, reduction='none').mean(dim=(1, 2, 3))
-                    fluence_loss = F.mse_loss(Y_hat[:, 1], fluence, reduction='none').mean()
+                    mu_a_hat = Y_hat[:, 0:1]
+                    fluence_hat = Y_hat[:, 1:2]
+                    
+                    mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='none').mean(dim=(1, 2, 3))
+                    fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='none').mean()
                     best_and_worst_examples = uf.get_best_and_worst(
                         mu_a_loss, best_and_worst_examples, i*args.val_batch_size
                     )
@@ -204,17 +207,20 @@ if __name__ == '__main__':
     test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
-            X = batch[0].to(device); Y = batch[1].to(device)
+            X = batch[0].to(device); mu_a = batch[1].to(device)
             fluence = batch[2].to(device)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-            mu_a_loss = F.mse_loss(Y, Y_hat[:, 0], reduction='none').mean(dim=(1, 2, 3))
-            fluence_loss = F.mse_loss(fluence, Y_hat[:, 1], reduction='none').mean()
+            mu_a_hat = Y_hat[:, 0:1]
+            fluence_hat = Y_hat[:, 1:2]
+            
+            mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='none').mean(dim=(1, 2, 3))
+            fluence_loss = F.mse_loss(fluence, fluence_hat, reduction='none').mean()
             bg_test_metric_calculator(
-                Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
+                Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
             )
             if args.synthetic_or_experimental == 'experimental':
                 inclusion_test_metric_calculator(
-                    Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                    Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i
@@ -257,22 +263,24 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
-        (X_1, Y_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
-        (X_2, Y_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
-        (X_best, Y_best, _, wavelength_nm_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']][:5]
-        (X_worst, Y_worst, _, wavelength_nm_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']][:5]
+        (X_0, mu_a_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
+        (X_1, mu_a_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
+        (X_2, mu_a_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
+        (X_best, mu_a_best, _, wavelength_nm_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']][:5]
+        (X_worst, mu_a_worst, _, wavelength_nm_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']][:5]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
-        Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
+        mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, mu_a_best, mu_a_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
         wavelength_nm = torch.stack(
             (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
              wavelength_nm_best, wavelength_nm_worst), dim=0
         )
         with torch.no_grad():
-            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)     
+            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+            mu_a_hat = Y_hat[:, 0:1]
+            fluence_hat = Y_hat[:, 1:2]
         uf.plot_test_examples(
-            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat[:, 0],
+            datasets['test'], checkpointer.dirpath, args, X, mu_a, mu_a_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example1', 'test_example2',

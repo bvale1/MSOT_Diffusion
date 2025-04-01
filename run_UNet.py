@@ -144,6 +144,7 @@ if __name__ == '__main__':
             (X, Y, fluence, wavelength_nm, _) = batch[:5]
             X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
             optimizer.zero_grad()
+            
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
@@ -151,12 +152,15 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-            mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
+            mu_a_hat = Y_hat[:, 0:1]
+            fluence_hat = Y_hat[:, 1:2]
+            
+            mu_a_loss = mse_loss(mu_a_hat, Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss.clone().detach(), best_and_worst_examples, i*args.train_batch_size
             )
             mu_a_loss = mu_a_loss.mean()
-            fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
+            fluence_loss = mse_loss(fluence_hat, fluence).mean()
             loss = mu_a_loss + fluence_loss
             total_train_loss += loss.item()            
             loss.backward()
@@ -188,8 +192,11 @@ if __name__ == '__main__':
                         Y_hat = model(X, wavelength_nm.to(device).squeeze())
                     case 'UNet_diffusion_ablation':
                         Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
-                fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
+                mu_a_hat = Y_hat[:, 0:1]
+                fluence_hat = Y_hat[:, 1:2]
+            
+                mu_a_loss = mse_loss(mu_a_hat, Y).mean(dim=(1, 2, 3))
+                fluence_loss = mse_loss(fluence_hat, fluence).mean()
                 best_and_worst_examples = uf.get_best_and_worst(
                     mu_a_loss, best_and_worst_examples, i*args.val_batch_size
                 )
@@ -219,8 +226,8 @@ if __name__ == '__main__':
     test_start_time = timeit.default_timer()
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
-            (X, Y, fluence, wavelength_nm, bg_mask) = batch[:5]
-            X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
+            (X, mu_a, fluence, wavelength_nm, bg_mask) = batch[:5]
+            X = X.to(device); mu_a = mu_a.to(device); fluence = fluence.to(device)
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
@@ -228,14 +235,17 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-            mu_a_loss = mse_loss(Y_hat[:, 0], Y).mean(dim=(1, 2, 3))
-            fluence_loss = mse_loss(Y_hat[:, 1], fluence).mean()
+            mu_a_hat = Y_hat[:, 0:1]
+            fluence_hat = Y_hat[:, 1:2]
+            
+            mu_a_loss = mse_loss(mu_a_hat, mu_a).mean(dim=(1, 2, 3))
+            fluence_loss = mse_loss(fluence_hat, fluence).mean()
             bg_test_metric_calculator(
-                Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=bg_mask
+                Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=bg_mask
             )
             if args.synthetic_or_experimental == 'experimental':
                 inclusion_test_metric_calculator(
-                    Y=Y[:, 0], Y_hat=Y_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                    Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i
@@ -278,13 +288,13 @@ if __name__ == '__main__':
     # failier cases, or outliers in the dataset
     if args.save_test_examples:
         model.eval()
-        (X_0, Y_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
-        (X_1, Y_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
-        (X_2, Y_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
+        (X_0, mu_a_0, _, wavelength_nm_0, mask_0) = datasets['test'][0][:5]
+        (X_1, mu_a_1, _, wavelength_nm_1, mask_1) = datasets['test'][1][:5]
+        (X_2, mu_a_2, _, wavelength_nm_2, mask_2) = datasets['test'][2][:5]
         (X_best, Y_best, _, wavelength_nm_best, mask_best) = datasets['test'][best_and_worst_examples['best']['index']][:5]
         (X_worst, Y_worst, _, wavelength_nm_worst, mask_worst) = datasets['test'][best_and_worst_examples['worst']['index']][:5]
         X = torch.stack((X_0, X_1, X_2, X_best, X_worst), dim=0).to(device)
-        Y = torch.stack((Y_0, Y_1, Y_2, Y_best, Y_worst), dim=0).to(device)
+        mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
         wavelength_nm = torch.stack(
             (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
@@ -298,8 +308,10 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+        mu_a_hat = Y_hat[:, 0:1]
+        fluence_hat = Y_hat[:, 1:2]
         uf.plot_test_examples(
-            datasets['test'], checkpointer.dirpath, args, X, Y, Y_hat[:, 0],
+            datasets['test'], checkpointer.dirpath, args, X, mu_a, mu_a_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example1', 'test_example2',

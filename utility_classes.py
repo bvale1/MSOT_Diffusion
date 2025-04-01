@@ -494,30 +494,32 @@ class TestMetricCalculator():
             'MAE' : [],
             'Rel_Err' : [],
             'PSNR' : [],
-            'SSIM' : []
+            'SSIM' : [],
+            'R2' : []
         }        
     
     def __call__(self, Y : torch.Tensor, Y_hat : torch.Tensor,
                  Y_transform=None, Y_mask=None) -> None:
         assert Y.shape == Y_hat.shape, f"Y.shape {Y.shape} must equal \
             Y_hat.shape {Y_hat.shape}"
-        assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (B, C, H, W)"
+        assert Y.dim() == 4, f"Y.dim() {Y.dim()} must be of shape (b, c, h, w)"
         b = Y.shape[0]
         Y = Y.detach().cpu()
         Y_hat = Y_hat.detach().cpu()
         if Y_transform:
             Y = Y_transform.inverse(Y)
             Y_hat = Y_transform.inverse(Y_hat)
-        Y = Y.view(b, -1)
-        Y_hat = Y_hat.view(b, -1)
+        Y = Y.view(b, -1) # [b, c*h*w]
+        Y_hat = Y_hat.view(b, -1) # [b, c*h*w]
         if type(Y_mask) == torch.Tensor:
-            Y_mask = Y_mask.detach().cpu().view(b, -1)
-            Y_mask_sum = Y_mask.sum(dim=1, keepdim=True)
-            Y_max = (Y*Y_mask).amax(dim=1, keepdim=True)
+            Y_mask = Y_mask.detach().cpu().view(b, -1) # [b, c*h*w]
+            Y_mask_sum = Y_mask.sum(dim=1, keepdim=True) # [b, 1]
+            Y_max = (Y*Y_mask).amax(dim=1, keepdim=True) # [b, 1]
         else:
             Y_max = Y.amax(dim=1, keepdim=True)
         
         if type(Y_mask) == torch.Tensor:
+            # [b, c*h*w] * [b, c*h*w] = [b, c*h*w] -> [b, 1]
             RMSE = torch.sqrt((((Y - Y_hat)*Y_mask)**2).sum(dim=1, keepdim=True) / Y_mask_sum)
             MAE = torch.abs((Y - Y_hat)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
             Rel_Err = 100 * torch.abs((Y - Y_hat)*Y_mask/Y).sum(dim=1, keepdim=True) / Y_mask_sum
@@ -526,7 +528,10 @@ class TestMetricCalculator():
             var_Y = (((Y - mean_Y)**2)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
             var_Y_hat = (((Y_hat - mean_Y_hat)**2)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
             cov_Y_Y_hat = ((Y - mean_Y)*(Y_hat - mean_Y_hat)*Y_mask).sum(dim=1, keepdim=True) / Y_mask_sum
+            SSr = (((Y - Y_hat)**2)*Y_mask).sum(dim=1, keepdim=True) # sum of squares of residuals
+            SSt = (((Y - mean_Y)**2)*Y_mask).sum(dim=1, keepdim=True) # total sum of squares
         else:
+            # [b, c*h*w] * [b, c*h*w] = [b, c*h*w] -> [b, 1]
             RMSE = torch.sqrt(torch.mean((Y - Y_hat)**2, dim=1, keepdim=True))
             MAE = torch.mean(torch.abs(Y - Y_hat), dim=1, keepdim=True)
             Rel_Err = torch.mean(100 * torch.abs(Y - Y_hat) / Y, dim=1, keepdim=True)
@@ -537,17 +542,22 @@ class TestMetricCalculator():
             cov_Y_Y_hat = torch.mean(
                 (Y - mean_Y)*(Y_hat - mean_Y_hat), dim=1, keepdim=True
             )
+            SSr = torch.sum((Y - Y_hat)**2, dim=1, keepdim=True) # sum of squares of residuals
+            SSt = torch.sum((Y - mean_Y)**2, dim=1, keepdim=True) # total sum of squares
+            
         PSNR = 20*torch.log10(Y_max / RMSE)
         c1 = (0.01 * Y_max)**2
         c2 = (0.03 * Y_max)**2
         SSIM = (2*mean_Y*mean_Y_hat + c1)*(2*cov_Y_Y_hat + c2) / \
             ((mean_Y**2 + mean_Y_hat**2 + c1)*(var_Y + var_Y_hat + c2))
+        R2 = 1 - (SSr / SSt)
         
         self.metrics['RMSE'] += RMSE.squeeze().tolist()
         self.metrics['MAE'] += MAE.squeeze().tolist()
         self.metrics['Rel_Err'] += Rel_Err.squeeze().tolist()
         self.metrics['PSNR'] += PSNR.squeeze().tolist()
         self.metrics['SSIM'] += SSIM.squeeze().tolist()
+        self.metrics['R2'] += R2.squeeze().tolist()
                 
     def get_metrics(self) -> dict:
         return {
@@ -560,7 +570,9 @@ class TestMetricCalculator():
             'mean_PSNR' : np.mean(np.asarray(self.metrics['PSNR'])),
             'std_PSNR' : np.std(np.asarray(self.metrics['PSNR'])),
             'mean_SSIM' : np.mean(np.asarray(self.metrics['SSIM'])),
-            'std_SSIM' : np.std(np.asarray(self.metrics['SSIM']))
+            'std_SSIM' : np.std(np.asarray(self.metrics['SSIM'])),
+            'mean_R2' : np.mean(np.asarray(self.metrics['R2'])),
+            'std_R2' : np.std(np.asarray(self.metrics['R2']))
         }
         
     def save_metrics_all_test_samples(self, save_path : str) -> None:
