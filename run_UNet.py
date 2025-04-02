@@ -19,7 +19,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250130_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250327_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
     parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic'], default='synthetic', help='whether to use synthetic or experimental data')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=200, help='number of training epochs, set to zero for testing')
@@ -34,7 +34,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
     parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation'], default='UNet_smp', help='model to train')
-    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='minmax', help='normalisation method for the data')
+    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
     
@@ -93,7 +93,7 @@ if __name__ == '__main__':
             model = ddp.Unet(
                 dim=32, channels=channels, out_dim=channels * 2,
                 self_condition=False, image_condition=False, full_attn=False,
-                flash_attn=False, learned_sinusoidal_cond=True
+                flash_attn=False, learned_sinusoidal_cond=False
             )
     
     if args.load_checkpoint_dir:
@@ -263,17 +263,22 @@ if __name__ == '__main__':
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'background_test_metrics: {bg_test_metric_calculator.get_metrics()}')
-    logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
+    if args.synthetic_or_experimental == 'experimental':
+        logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
     if args.save_dir:
         bg_test_metric_calculator.save_metrics_all_test_samples(
             os.path.join(args.save_dir, 'background_test_metrics.json')
-        )    
-        inclusion_test_metric_calculator.save_metrics_all_test_samples(
-            os.path.join(args.save_dir, 'inclusion_test_metrics.json')
         )
+        if args.synthetic_or_experimental == 'experimental':
+            inclusion_test_metric_calculator.save_metrics_all_test_samples(
+                os.path.join(args.save_dir, 'inclusion_test_metrics.json')
+            )
     if args.wandb_log:
         wandb.log(bg_test_metric_calculator.get_metrics())
-        wandb.log(inclusion_test_metric_calculator.get_metrics())
+        if args.synthetic_or_experimental == 'experimental':
+            inclusion_metrics_dict = inclusion_test_metric_calculator.get_metrics()
+            for key in inclusion_metrics_dict.keys():
+                wandb.log({'inclusion_'+key : inclusion_metrics_dict[key]})
         wandb.log({'test_time' : total_test_time,
                    'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
@@ -299,7 +304,7 @@ if __name__ == '__main__':
         wavelength_nm = torch.stack(
             (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
              wavelength_nm_best, wavelength_nm_worst), dim=0
-        )
+        ).to(device)
         with torch.no_grad():
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':

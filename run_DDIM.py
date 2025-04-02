@@ -238,17 +238,22 @@ if __name__ == '__main__':
     logging.info(f'mean_test_loss: {total_test_loss/len(dataloaders['test'])}')
     logging.info(f'test_epoch {best_and_worst_examples}')
     logging.info(f'background_test_metrics: {bg_test_metric_calculator.get_metrics()}')
-    logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
+    if args.synthetic_or_experimental == 'experimental':
+        logging.info(f'inclusion_test_metrics: {inclusion_test_metric_calculator.get_metrics()}')
     if args.save_dir:
         bg_test_metric_calculator.save_metrics_all_test_samples(
             os.path.join(args.save_dir, 'background_test_metrics.json')
-        )    
-        inclusion_test_metric_calculator.save_metrics_all_test_samples(
-            os.path.join(args.save_dir, 'inclusion_test_metrics.json')
         )
+        if args.synthetic_or_experimental == 'experimental':
+            inclusion_test_metric_calculator.save_metrics_all_test_samples(
+                os.path.join(args.save_dir, 'inclusion_test_metrics.json')
+            )
     if args.wandb_log:
         wandb.log(bg_test_metric_calculator.get_metrics())
-        wandb.log(inclusion_test_metric_calculator.get_metrics())
+        if args.synthetic_or_experimental == 'experimental':
+            inclusion_metrics_dict = inclusion_test_metric_calculator.get_metrics()
+            for key in inclusion_metrics_dict.keys():
+                wandb.log({'inclusion_'+key : inclusion_metrics_dict[key]})
         wandb.log({'test_time' : total_test_time,
                    'test_time_per_batch' : total_test_time/len(dataloaders['test'])})
     if args.save_dir and args.epochs > 0:
