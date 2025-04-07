@@ -37,6 +37,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
+    parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -76,22 +77,23 @@ if __name__ == '__main__':
     # ==================== Model ====================
     image_size = (datasets['test'][0][0].shape[-2],  datasets['test'][0][0].shape[-1])
     channels = datasets['test'][0][0].shape[-3]
+    out_channels = channels * 2 if args.predict_fluence else channels
     match args.model:
         case 'UNet_smp':
             model = smp.Unet(
                 encoder_name='resnet101', encoder_weights='imagenet',
                 decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-                in_channels=channels, classes=channels * 2
+                in_channels=channels, classes=out_channels
             )
             uf.reset_weights(model)
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
-                in_channels=channels, out_channels=channels * 2,
+                in_channels=channels, out_channels=out_channels,
                 initial_filter_size=64, kernel_size=3
             )
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
             model = ddp.Unet(
-                dim=32, channels=channels, out_dim=channels * 2,
+                dim=32, channels=channels, out_dim=out_channels,
                 self_condition=False, image_condition=False, full_attn=False,
                 flash_attn=False, learned_sinusoidal_cond=False
             )
@@ -112,7 +114,7 @@ if __name__ == '__main__':
         case 'experimental':
             # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=1e-4
+                model.parameters(), lr=args.lr
             )
         case 'synthetic':
             # Gives a bit better convergance than default Adam in my experience
@@ -142,7 +144,7 @@ if __name__ == '__main__':
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         for i, batch in enumerate(dataloaders['train']):
             (X, Y, fluence, wavelength_nm, _) = batch[:5]
-            X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
+            X = X.to(device); Y = Y.to(device); 
             optimizer.zero_grad()
             
             match args.model:
@@ -152,16 +154,20 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-            mu_a_hat = Y_hat[:, 0:1]
-            fluence_hat = Y_hat[:, 1:2]
-            
+
+            mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = mse_loss(mu_a_hat, Y).mean(dim=(1, 2, 3))
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss.clone().detach(), best_and_worst_examples, i*args.train_batch_size
             )
             mu_a_loss = mu_a_loss.mean()
-            fluence_loss = mse_loss(fluence_hat, fluence).mean()
-            loss = mu_a_loss + fluence_loss
+            if args.predict_fluence:
+                fluence = fluence.to(device)
+                fluence_hat = Y_hat[:, 1:2]
+                fluence_loss = mse_loss(fluence_hat, fluence).mean()
+                loss = mu_a_loss + fluence_loss
+            else:
+                loss = mu_a_loss
             total_train_loss += loss.item()            
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -171,8 +177,9 @@ if __name__ == '__main__':
                     pass
             if args.wandb_log:
                 wandb.log({'train_tot_loss' : loss.item(),
-                           'train_mu_a_loss' : mu_a_loss.item(),
-                           'train_fluence_loss' : fluence_loss.item()})
+                           'train_mu_a_loss' : mu_a_loss.item()})
+                if args.predict_fluence:
+                    wandb.log({'train_fluence_loss' : fluence_loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         logging.info(f'train_epoch {best_and_worst_examples}')
         
@@ -184,7 +191,8 @@ if __name__ == '__main__':
         with torch.no_grad():
             for i, batch in enumerate(dataloaders['val']):
                 (X, Y, fluence, wavelength_nm, _) = batch[:5]
-                X = X.to(device); Y = Y.to(device); fluence = fluence.to(device)
+                X = X.to(device); Y = Y.to(device); 
+
                 match args.model:
                     case 'UNet_smp' | 'UNet_e2eQPAT':
                         Y_hat = model(X)
@@ -192,21 +200,26 @@ if __name__ == '__main__':
                         Y_hat = model(X, wavelength_nm.to(device).squeeze())
                     case 'UNet_diffusion_ablation':
                         Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                mu_a_hat = Y_hat[:, 0:1]
-                fluence_hat = Y_hat[:, 1:2]
-            
+
+                mu_a_hat = Y_hat[:, 0:1]            
                 mu_a_loss = mse_loss(mu_a_hat, Y).mean(dim=(1, 2, 3))
-                fluence_loss = mse_loss(fluence_hat, fluence).mean()
                 best_and_worst_examples = uf.get_best_and_worst(
                     mu_a_loss, best_and_worst_examples, i*args.val_batch_size
                 )
                 mu_a_loss = mu_a_loss.mean()
-                loss = mu_a_loss + fluence_loss
+                if args.predict_fluence:
+                    fluence = fluence.to(device)
+                    fluence_hat = Y_hat[:, 1:2]
+                    fluence_loss = mse_loss(fluence_hat, fluence).mean()
+                    loss = mu_a_loss + fluence_loss
+                else:
+                    loss = mu_a_loss
                 total_val_loss += loss.item()
                 if args.wandb_log:
                     wandb.log({'val_tot_loss' : loss.item(),
-                               'val_mu_a_loss' : mu_a_loss.item(),
-                               'val_fluence_loss' : fluence_loss.item()})
+                               'val_mu_a_loss' : mu_a_loss.item()})
+                    if args.predict_fluence:
+                        wandb,log({'val_fluence_loss' : fluence_loss.item()})
         total_val_loss /= len(dataloaders['val'])
         scheduler.step(total_val_loss) # lr scheduler
         if args.save_dir: # save model checkpoint if validation loss is lower
@@ -227,7 +240,8 @@ if __name__ == '__main__':
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             (X, mu_a, fluence, wavelength_nm, bg_mask) = batch[:5]
-            X = X.to(device); mu_a = mu_a.to(device); fluence = fluence.to(device)
+            X = X.to(device); mu_a = mu_a.to(device); 
+
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
@@ -235,11 +249,10 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-            mu_a_hat = Y_hat[:, 0:1]
-            fluence_hat = Y_hat[:, 1:2]
-            
+
+            mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = mse_loss(mu_a_hat, mu_a).mean(dim=(1, 2, 3))
-            fluence_loss = mse_loss(fluence_hat, fluence).mean()
+            
             bg_test_metric_calculator(
                 Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=bg_mask
             )
@@ -250,13 +263,20 @@ if __name__ == '__main__':
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i
             )
-            mu_a_loss = mu_a_loss.mean()            
-            loss = mu_a_loss + fluence_loss
+            mu_a_loss = mu_a_loss.mean()
+            if args.predict_fluence:
+                fluence = fluence.to(device)
+                fluence_hat = Y_hat[:, 1:2]
+                fluence_loss = mse_loss(fluence_hat, fluence).mean()
+                loss = mu_a_loss + fluence_loss
+            else:
+                loss = mu_a_loss
             total_test_loss += loss.item()
             if args.wandb_log:
                 wandb.log({'test_tot_loss' : loss.item(),
-                           'test_mu_a_loss' : mu_a_loss.item(),
-                           'test_fluence_loss' : fluence_loss.item()})
+                           'test_mu_a_loss' : mu_a_loss.item()})
+                if args.predict_fluence:
+                    wandb.log({'test_fluence_loss' : fluence_loss.item()})
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'test_time: {total_test_time}')
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
@@ -302,7 +322,7 @@ if __name__ == '__main__':
         mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, Y_best, Y_worst), dim=0).to(device)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_best, mask_worst), dim=0)
         wavelength_nm = torch.stack(
-            (wavelength_nm_0, wavelength_nm_1,  wavelength_nm_2,
+            (wavelength_nm_0, wavelength_nm_1, wavelength_nm_2,
              wavelength_nm_best, wavelength_nm_worst), dim=0
         ).to(device)
         with torch.no_grad():
@@ -314,7 +334,8 @@ if __name__ == '__main__':
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
         mu_a_hat = Y_hat[:, 0:1]
-        fluence_hat = Y_hat[:, 1:2]
+        if args.predict_fluence:
+            fluence_hat = Y_hat[:, 1:2]
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, mu_a, mu_a_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,

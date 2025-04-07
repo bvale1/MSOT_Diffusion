@@ -93,7 +93,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     if args.wandb_log:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion', name=f'{model_name}_{args.fold}', 
+            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
             save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     

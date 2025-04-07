@@ -108,7 +108,7 @@ if __name__ == '__main__':
         case 'experimental':
             # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=1e-4
+                model.parameters(), lr=args.lr
             )
         case 'synthetic':
             # Gives a bit better convergance than default Adam in my experience
