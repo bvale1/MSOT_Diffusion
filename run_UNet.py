@@ -38,6 +38,7 @@ if __name__ == '__main__':
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
     parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
+    parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -221,7 +222,8 @@ if __name__ == '__main__':
                     if args.predict_fluence:
                         wandb,log({'val_fluence_loss' : fluence_loss.item()})
         total_val_loss /= len(dataloaders['val'])
-        scheduler.step(total_val_loss) # lr scheduler
+        if not args.no_lr_scheduler:
+            scheduler.step(total_val_loss) # lr scheduler
         if args.save_dir: # save model checkpoint if validation loss is lower
             checkpointer(model, epoch, total_val_loss)
         logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}, lr: {scheduler.get_last_lr()}')
