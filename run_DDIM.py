@@ -78,10 +78,9 @@ if __name__ == '__main__':
     # ==================== Model ====================
     input_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
     channels = datasets['test'][0][0].shape[-3]
-    if args.predict_fluence:
-        channels *= 2
+    out_channels = channels * 2 if args.predict_fluence else channels
     model = ddp.Unet(
-        dim=32, channels=channels, out_dim=channels,
+        dim=32, channels=out_channels, out_dim=out_channels,
         self_condition=args.self_condition, image_condition=True, 
         image_condition_channels=channels, full_attn=False, flash_attn=False
     )
@@ -91,11 +90,8 @@ if __name__ == '__main__':
         sampling_timesteps=100, objective=args.objective, auto_normalize=False
     )
     if args.load_checkpoint_dir:
-        try:
-            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
-            logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
-        except Exception as e:
-            logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
+        model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
+        logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of diffusion model parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')

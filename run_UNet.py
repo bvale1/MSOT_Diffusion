@@ -220,7 +220,7 @@ if __name__ == '__main__':
                     wandb.log({'val_tot_loss' : loss.item(),
                                'val_mu_a_loss' : mu_a_loss.item()})
                     if args.predict_fluence:
-                        wandb,log({'val_fluence_loss' : fluence_loss.item()})
+                        wandb.log({'val_fluence_loss' : fluence_loss.item()})
         total_val_loss /= len(dataloaders['val'])
         if not args.no_lr_scheduler:
             scheduler.step(total_val_loss) # lr scheduler
