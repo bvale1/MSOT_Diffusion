@@ -176,9 +176,10 @@ class ImageViewer(QWidget):
         
 
 if __name__ == '__main__':
-    root_dir = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
-    root_dir = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
-    root_dir = 'E:\\ImageNet_MSOT_simulations'
+    #root_dir = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse' # from wsl
+    root_dir = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse' # from wsl
+    #root_dir = 'F:\\cluster_MSOT_simulations\\digimouse_fluence_correction\\3d_digimouse' # from windows
+    #root_dir = 'E:\\ImageNet_MSOT_simulations'
 
     h5_dirs = glob.glob(os.path.join(root_dir, '**/*.h5'), recursive=True)
     json_dirs = glob.glob(os.path.join(root_dir, '**/*.json'), recursive=True)
@@ -190,5 +191,5 @@ if __name__ == '__main__':
     print(f'Found {len(sim_dirs)} simulations')    
     
     app = QApplication([])
-    viewer = ImageViewer(list(sim_dirs)[:1], load_all=False, start_idx=0)
+    viewer = ImageViewer(list(sim_dirs), load_all=True, start_idx=0)
     app.exec_()

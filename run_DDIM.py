@@ -18,7 +18,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250130_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
+    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250327_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
     parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic'], default='synthetic', help='whether to use synthetic or experimental data')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs, set to zero for testing')
@@ -123,7 +123,7 @@ if __name__ == '__main__':
         checkpointer = uc.CheckpointSaver(args.save_dir)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
             json.dump(var_args, f, indent=4)
-    
+
     # ==================== Training ====================
     for epoch in range(args.epochs):
         # ==================== Train epoch ====================
