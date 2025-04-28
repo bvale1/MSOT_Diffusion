@@ -26,6 +26,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# results files
+*.csv
+*.png
+*.jpeg
+*.h5
+
 # weights and biases checkpoints
 wandb/
 mu_a_reconstruction/

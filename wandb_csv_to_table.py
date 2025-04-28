@@ -2,17 +2,16 @@ import numpy as np
 import pandas as pd
 import scipy.stats as st
 
-file = 'wandb_export_2025-03-18T12_28_37.136+00_00.csv'
+file = 'wandb_export_2025-04-25T16_32_27.360+00_00'
 
 models = ['UNet_e2eQPAT',
-          'UNet_diffusion_ablation',
           'UNet_wl_pos_emb',
-          'UNet_smp',
+          'UNet_diffusion_ablation',
           'DDIM']
 
 metrics_dict = {'mean_RMSE' : [None]*5, 'mean_MAE' : [None]*5, 'mean_Rel_Err' : [None]*5,
            'mean_R2' : [None]*5, 'mean_PSNR' : [None]*5, 'mean_SSIM' : [None]*5}
-models_dict = {model : metrics_dict for model in models}
+models_dict = {model : metrics_dict.copy() for model in models}
 folds_str = np.array(['_0', '_1', '_2', '_3', '_4'])
 
 # load dataframe and convert to numpy array
@@ -49,8 +48,33 @@ print(f'\begin{{table*}}                                                        
 \hline  \
 Model & RMSE (cm$^{{-1}}$) & Abs. Error (cm$^{{-1}}$) & Rel. Error (\%) & R$^{{2}}$ & PSNR & SSIM \\    \
 \hline  \
-U-Net & & & & & & \\    \
-Diffusion & & & & & & \\    \
+U-Net & {models_dict['UNet_e2eQPAT']['RMSE'][0]}\pm{models_dict['UNet_e2eQPAT']['RMSE'][1]} \
+    & {models_dict['UNet_e2eQPAT']['mean_MAE'][0]}\pm{models_dict['UNet_e2eQPAT']['mean_MAE'][1]} \
+    & {models_dict['UNet_e2eQPAT']['mean_Rel_Err'][0]}\pm{models_dict['UNet_e2eQPAT']['mean_Rel_Err'][1]} \
+    & {models_dict['UNet_e2eQPAT']['mean_R2'][0]}\pm{models_dict['UNet_e2eQPAT']['mean_R2'][1]} \
+    & {models_dict['UNet_e2eQPAT']['mean_PSNR'][0]}\pm{models_dict['UNet_e2eQPAT']['mean_PSNR'][1]} \
+    & {models_dict['UNet_e2eQPAT']['mean_SSIM'][0]}\pm{models_dict['UNet_e2eQPAT']['mean_SSIM'][1]} \\ \
+\hline  \
+WL Pos Emb {models_dict['UNet_wl_pos_emb']['RMSE'][0]}\pm{models_dict['UNet_wl_pos_emb']['RMSE'][1]} \
+    & {models_dict['UNet_wl_pos_emb']['mean_MAE'][0]}\pm{models_dict['UNet_wl_pos_emb']['mean_MAE'][1]} \
+    & {models_dict['UNet_wl_pos_emb']['mean_Rel_Err'][0]}\pm{models_dict['UNet_wl_pos_emb']['mean_Rel_Err'][1]} \
+    & {models_dict['UNet_wl_pos_emb']['mean_R2'][0]}\pm{models_dict['UNet_wl_pos_emb']['mean_R2'][1]} \
+    & {models_dict['UNet_wl_pos_emb']['mean_PSNR'][0]}\pm{models_dict['UNet_wl_pos_emb']['mean_PSNR'][1]} \
+    & {models_dict['UNet_wl_pos_emb']['mean_SSIM'][0]}\pm{models_dict['UNet_wl_pos_emb']['mean_SSIM'][1]} \\ \
+\hine  \
+Diffusion Ablation {models_dict['UNet_diffusion_ablation']['RMSE'][0]}\pm{models_dict['UNet_diffusion_ablation']['RMSE'][1]} \
+    & {models_dict['UNet_diffusion_ablation']['mean_MAE'][0]}\pm{models_dict['UNet_diffusion_ablation']['mean_MAE'][1]} \
+    & {models_dict['UNet_diffusion_ablation']['mean_Rel_Err'][0]}\pm{models_dict['UNet_diffusion_ablation']['mean_Rel_Err'][1]} \
+    & {models_dict['UNet_diffusion_ablation']['mean_R2'][0]}\pm{models_dict['UNet_diffusion_ablation']['mean_R2'][1]} \
+    & {models_dict['UNet_diffusion_ablation']['mean_PSNR'][0]}\pm{models_dict['UNet_diffusion_ablation']['mean_PSNR'][1]} \
+    & {models_dict['UNet_diffusion_ablation']['mean_SSIM'][0]}\pm{models_dict['UNet_diffusion_ablation']['mean_SSIM'][1]} \\ \
+\hline  \
+Conditional Diffusion {models_dict['DDIM']['RMSE'][0]}\pm{models_dict['DDIM']['RMSE'][1]} \
+    & {models_dict['DDIM']['mean_MAE'][0]}\pm{models_dict['DDIM']['mean_MAE'][1]} \
+    & {models_dict['DDIM']['mean_Rel_Err'][0]}\pm{models_dict['DDIM']['mean_Rel_Err'][1]} \
+    & {models_dict['DDIM']['mean_R2'][0]}\pm{models_dict['DDIM']['mean_R2'][1]} \
+    & {models_dict['DDIM']['mean_PSNR'][0]}\pm{models_dict['DDIM']['mean_PSNR'][1]} \
+    & {models_dict['DDIM']['mean_SSIM'][0]}\pm{models_dict['DDIM']['mean_SSIM'][1]} \\ \
 \hline  \
 \end{{tabular}}   \
 \label{{tab:exp_phantom_metrics}}   \

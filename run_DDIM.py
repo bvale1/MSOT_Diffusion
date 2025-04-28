@@ -37,6 +37,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
+    parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
+    parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
 
     args = parser.parse_args()
     var_args = vars(args)
@@ -76,8 +78,9 @@ if __name__ == '__main__':
     # ==================== Model ====================
     input_size = (datasets['test'][0][0].shape[-2], datasets['test'][0][0].shape[-1])
     channels = datasets['test'][0][0].shape[-3]
+    out_channels = channels * 2 if args.predict_fluence else channels
     model = ddp.Unet(
-        dim=32, channels=channels * 2, out_dim=channels * 2,
+        dim=32, channels=out_channels, out_dim=out_channels,
         self_condition=args.self_condition, image_condition=True, 
         image_condition_channels=channels, full_attn=False, flash_attn=False
     )
@@ -87,11 +90,8 @@ if __name__ == '__main__':
         sampling_timesteps=100, objective=args.objective, auto_normalize=False
     )
     if args.load_checkpoint_dir:
-        try:
-            model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
-            logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
-        except Exception as e:
-            logging.error(f'could not load checkpoint: {args.load_checkpoint_dir} {e}')
+        model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
+        logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of diffusion model parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
@@ -105,7 +105,7 @@ if __name__ == '__main__':
         case 'experimental':
             # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=1e-4
+                model.parameters(), lr=args.lr
             )
         case 'synthetic':
             # Gives a bit better convergance than default Adam in my experience
@@ -133,18 +133,24 @@ if __name__ == '__main__':
                                    'worst' : {'index' : 0, 'loss' : -np.Inf}}
         for i, batch in enumerate(dataloaders['train']):
             X = batch[0].to(device); Y = batch[1].to(device)
-            fluence = batch[2].to(device)
             optimizer.zero_grad()
             # the objective is to generate Y from Gaussian noise, conditioned on X
-            loss = diffusion.forward(torch.cat((Y, fluence), dim=1), x_cond=X)
-            mu_a_loss = loss[:, 0]
-            fluence_loss = loss[:, 1].mean()
+            if args.predict_fluence:
+                fluence = batch[2].to(device)
+                loss = diffusion.forward(torch.cat((Y, fluence), dim=1), x_cond=X)
+            else:
+                loss = diffusion.forward(Y, x_cond=X)
+            mu_a_loss = loss[:, 0]            
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss.clone().detach(), best_and_worst_examples, i*args.val_batch_size
             )
             mu_a_loss = loss.mean()
-            loss = mu_a_loss + fluence_loss
-            total_train_loss += loss.item()
+            if args.predict_fluence:
+                fluence_loss = loss[:, 1].mean()
+                loss = mu_a_loss + fluence_loss
+                total_train_loss += loss.item()
+            else:
+                loss = mu_a_loss
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -154,9 +160,10 @@ if __name__ == '__main__':
             if args.wandb_log:
                 wandb.log(
                     {'train_tot_loss' : loss.item(),
-                     'train_mu_a_loss' : mu_a_loss.item(),
-                     'train_fluence_loss' : fluence_loss.item()}
+                     'train_mu_a_loss' : mu_a_loss.item()}
                 )
+                if args.predict_fluence:
+                    wandb.log({'train_fluence_loss' : fluence_loss.item()})
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(dataloaders['train'])}')
         
         # ==================== Validation epoch ====================
@@ -168,28 +175,33 @@ if __name__ == '__main__':
             with torch.no_grad():
                 for i, batch in enumerate(dataloaders['val']):
                     X = batch[0].to(device); mu_a = batch[1].to(device)
-                    fluence = batch[2].to(device)
+                    
                     Y_hat = diffusion.sample(
                         batch_size=X.shape[0], x_cond=X
                     )
-                    mu_a_hat = Y_hat[:, 0:1]
-                    fluence_hat = Y_hat[:, 1:2]
-                    
+                    mu_a_hat = Y_hat[:, 0:1]                   
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='none').mean(dim=(1, 2, 3))
-                    fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='none').mean()
                     best_and_worst_examples = uf.get_best_and_worst(
                         mu_a_loss, best_and_worst_examples, i*args.val_batch_size
                     )
                     mu_a_loss = mu_a_loss.mean()
-                    loss = loss + fluence_loss
+                    if args.predict_fluence:
+                        fluence = batch[2].to(device)
+                        fluence_hat = Y_hat[:, 1:2]
+                        fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='none').mean()
+                        loss = loss + fluence_loss
+                    else:
+                        loss = mu_a_loss
                     total_val_loss += loss.item()
                     if args.wandb_log:
                         wandb.log({'val_tot_loss' : loss.item(),
-                                   'val_mu_a_loss' : mu_a_loss.item(),
-                                   'val_fluence_loss' : fluence_loss.item()})
+                                   'val_mu_a_loss' : mu_a_loss.item()})
+                        if args.predict_fluence:
+                            wandb.log({'val_fluence_loss' : fluence_loss.item()})
                        
             total_val_loss /= len(dataloaders['val'])
-            scheduler.step(total_val_loss) # lr scheduler
+            if not args.no_lr_scheduler:
+                scheduler.step(total_val_loss) # lr scheduler
             if args.save_dir: # save model checkpoint if validation loss is lower
                 checkpointer(model, epoch, total_val_loss)
             logging.info(f'val_epoch: {epoch}, mean_val_loss: {total_val_loss}, lr: {scheduler.get_last_lr()}')
@@ -208,13 +220,10 @@ if __name__ == '__main__':
     with torch.no_grad():
         for i, batch in enumerate(dataloaders['test']):
             X = batch[0].to(device); mu_a = batch[1].to(device)
-            fluence = batch[2].to(device)
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             mu_a_hat = Y_hat[:, 0:1]
-            fluence_hat = Y_hat[:, 1:2]
-            
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='none').mean(dim=(1, 2, 3))
-            fluence_loss = F.mse_loss(fluence, fluence_hat, reduction='none').mean()
+            
             bg_test_metric_calculator(
                 Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
             )
@@ -224,14 +233,21 @@ if __name__ == '__main__':
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i
-            )            
+            )
             mu_a_loss = mu_a_loss.mean()
-            loss = mu_a_loss + fluence_loss
+            if args.predict_fluence:
+                fluence = batch[2].to(device)
+                fluence_hat = Y_hat[:, 1:2]
+                fluence_loss = F.mse_loss(fluence, fluence_hat, reduction='none').mean()
+                loss = mu_a_loss + fluence_loss
+            else:
+                loss = mu_a_loss
             total_test_loss += loss.item()
             if args.wandb_log:
                 wandb.log({'test_tot_loss' : loss.item(),
-                           'test_mu_a_loss' : mu_a_loss.item(),
-                           'test_fluence_loss' : fluence_loss.item()})                
+                           'test_mu_a_loss' : mu_a_loss.item()})
+                if args.predict_fluence:
+                    wandb.log({'test_fluence_loss' : fluence_loss.item()})           
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'test_time: {total_test_time}')
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
@@ -283,7 +299,7 @@ if __name__ == '__main__':
         with torch.no_grad():
             Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             mu_a_hat = Y_hat[:, 0:1]
-            fluence_hat = Y_hat[:, 1:2]
+            #fluence_hat = Y_hat[:, 1:2]
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, mu_a, mu_a_hat,
             mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
