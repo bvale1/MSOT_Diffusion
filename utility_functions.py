@@ -87,45 +87,35 @@ def reset_weights(module : nn.Module) -> None:
         for m in module.children():
             reset_weights(m)
             
-            
-def create_synthetic_dataloaders(args : argparse.Namespace,
-                                 model_name : str) -> tuple:
-    if args.wandb_log:
-        wandb.login()
-        wandb.init(
-            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
-            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
-        )
-    
-    with open(os.path.join(args.root_dir, 'config.json'), 'r') as f:
-        config = json.load(f) # <- dataset config contains normalisation parameters
-    
+
+def define_transforms(args : argparse.Namespace, normalise_params) -> tuple:
     match args.data_normalisation:
         case 'minmax':
             normalise_x = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_X']['max']]),
-                torch.Tensor([config['normalisation_X']['min']])
+                torch.Tensor([normalise_params['normalisation_X']['max']]),
+                torch.Tensor([normalise_params['normalisation_X']['min']])
             )
-            normalise_y = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_mu_a']['max']]),
-                torch.Tensor([config['normalisation_mu_a']['min']])
+            normalise_mu_a = DatasetMaxMinNormalise(
+                torch.Tensor([normalise_params['normalisation_mu_a']['max']]),
+                torch.Tensor([normalise_params['normalisation_mu_a']['min']])
             )
             normalise_fluence = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_Phi']['max']]),
-                torch.Tensor([config['normalisation_Phi']['min']])
+                torch.Tensor([normalise_params['normalisation_Phi']['max']]),
+                torch.Tensor([normalise_params['normalisation_Phi']['min']])
             )
+            
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_X']['mean']]),
-                torch.Tensor([config['normalisation_X']['std']])
+                torch.Tensor([normalise_params['normalisation_X']['mean']]),
+                torch.Tensor([normalise_params['normalisation_X']['std']])
             )
-            normalise_y = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_mu_a']['mean']]),
-                torch.Tensor([config['normalisation_mu_a']['std']])
+            normalise_mu_a = DatasetMeanStdNormalise(
+                torch.Tensor([normalise_params['normalisation_mu_a']['mean']]),
+                torch.Tensor([normalise_params['normalisation_mu_a']['std']])
             )
             normalise_fluence = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_Phi']['mean']]),
-                torch.Tensor([config['normalisation_Phi']['std']])
+                torch.Tensor([normalise_params['normalisation_Phi']['mean']]),
+                torch.Tensor([normalise_params['normalisation_Phi']['std']])
             )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
@@ -141,7 +131,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
             (args.image_size, args.image_size),
             interpolation=transforms.InterpolationMode.BILINEAR
         ),
-        normalise_y
+        normalise_mu_a
     ])
     fluence_transform = transforms.Compose([
         ReplaceNaNWithZero(),
@@ -158,22 +148,52 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
             interpolation=transforms.InterpolationMode.NEAREST
         )
     ])
+    transforms_dict = {
+        'x_transform' : x_transform,
+        'normalise_x' : normalise_x,
+        'mu_a_transform' : y_transform,
+        'normalise_mu_a' : normalise_mu_a,
+        'fluence_transform' : fluence_transform,
+        'normalise_fluence' : normalise_fluence,
+        'mask_transform' : mask_transform
+    }
+    return transforms_dict
+    
+def create_synthetic_dataloaders(args : argparse.Namespace,
+                                 model_name : str) -> tuple:
+    if args.wandb_log and not wandb.run:
+        wandb.login()
+        wandb.init(
+            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
+            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
+        )
+    
+    with open(os.path.join(args.synthetic_root_dir, 'config.json'), 'r') as f:
+        config = json.load(f) # <- dataset config contains normalisation parameters
+    
+    transforms_dict = define_transforms(args, config)
     
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='train', data_space='image', fold=args.fold,
-            X_transform=x_transform, Y_transform=y_transform, 
-            fluence_transform=fluence_transform, mask_transform=mask_transform
+            args.synthetic_root_dir, split='train', data_space='image', fold=args.fold,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='val', data_space='image', fold=args.fold,
-            X_transform=x_transform, Y_transform=y_transform, 
-            fluence_transform=fluence_transform, mask_transform=mask_transform
+            args.synthetic_root_dir, split='val', data_space='image', fold=args.fold,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='test', data_space='image', fold=args.fold,
-            X_transform=x_transform, Y_transform=y_transform, 
-            fluence_transform=fluence_transform, mask_transform=mask_transform
+            args.synthetic_root_dir, split='test', data_space='image', fold=args.fold,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
     }
     dataloaders = {
@@ -191,13 +211,13 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
         test: {len(datasets["test"])}')
-    return (datasets, dataloaders, normalise_x, normalise_y, normalise_fluence)
+    return (datasets, dataloaders, transforms_dict)
 
 
 def create_e2eQPAT_dataloaders(args : argparse.Namespace,
                                model_name : str, 
                                stats_path : str) -> tuple:
-    if args.wandb_log:
+    if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
             project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
@@ -207,86 +227,35 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     with open(stats_path, 'r') as f:
         stats = json.load(f) # <- dataset config contains normalisation parameters
     
-    match args.data_normalisation:
-        case 'minmax':
-            normalise_x = DatasetMaxMinNormalise(
-                torch.Tensor([stats['signal']['max']]),
-                torch.Tensor([stats['signal']['min']])
-            )
-            normalise_y = DatasetMaxMinNormalise(
-                torch.Tensor([stats['mua']['max']]),
-                torch.Tensor([stats['mua']['min']])
-            )
-            normalise_fluence = DatasetMaxMinNormalise(
-                torch.Tensor([stats['fluence']['max']]),
-                torch.Tensor([stats['fluence']['min']])
-            )
-            
-        case 'standard':
-            normalise_x = DatasetMeanStdNormalise(
-                torch.Tensor([stats['signal']['mean']]),
-                torch.Tensor([stats['signal']['std']])
-            )
-            normalise_y = DatasetMeanStdNormalise(
-                torch.Tensor([stats['mua']['mean']]),
-                torch.Tensor([stats['mua']['std']])
-            )
-            normalise_fluence = DatasetMeanStdNormalise(
-                torch.Tensor([stats['fluence']['mean']]),
-                torch.Tensor([stats['fluence']['std']])
-            )
-    x_transform = transforms.Compose([
-        ReplaceNaNWithZero(),
-        transforms.Resize(
-            (args.image_size, args.image_size), 
-            interpolation=transforms.InterpolationMode.BILINEAR
-        ),
-        normalise_x
-    ])
-    y_transform = transforms.Compose([
-        ReplaceNaNWithZero(),
-        transforms.Resize(
-            (args.image_size, args.image_size),
-            interpolation=transforms.InterpolationMode.BILINEAR
-        ),
-        normalise_y
-    ])
-    fluence_transform = transforms.Compose([
-        ReplaceNaNWithZero(),
-        transforms.Resize(
-            (args.image_size, args.image_size),
-            interpolation=transforms.InterpolationMode.BILINEAR
-        ),
-    ])
-    mask_transform = transforms.Compose([
-        ReplaceNaNWithZero(),
-        transforms.Resize(
-            (args.image_size, args.image_size),
-            interpolation=transforms.InterpolationMode.NEAREST
-        )
-    ])
+    transforms_dict = define_transforms(args, stats)
     
     datasets = {
         'train' : e2eQPATReconstructAbsorbtionDataset(
-            os.path.join(args.root_dir, 'training'),
+            os.path.join(args.experimental_root_dir, 'training'),
             stats=stats, fold=int(args.fold), train=True, augment=True,
-            use_all_data=False, experimental_data=True, X_transform=x_transform,
-            Y_transform=y_transform, fluence_transform=fluence_transform,
-            mask_transform=mask_transform
+            use_all_data=False, experimental_data=True,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
         'val' : e2eQPATReconstructAbsorbtionDataset(
-            os.path.join(args.root_dir, 'training'),
+            os.path.join(args.experimental_root_dir, 'training'),
             stats=stats, fold=int(args.fold), train=False, augment=False,
-            use_all_data=False, experimental_data=True, X_transform=x_transform, 
-            Y_transform=y_transform, fluence_transform=fluence_transform,
-            mask_transform=mask_transform
+            use_all_data=False, experimental_data=True,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
         'test' : e2eQPATReconstructAbsorbtionDataset(
-            os.path.join(args.root_dir, 'test'),
+            os.path.join(args.experimental_root_dir, 'test'),
             stats=stats, fold=int(args.fold), train=False, augment=False,
-            use_all_data=True, experimental_data=True, X_transform=x_transform, 
-            Y_transform=y_transform, fluence_transform=fluence_transform,
-            mask_transform=mask_transform
+            use_all_data=True, experimental_data=True,
+            X_transform=transforms_dict['x_transform'], 
+            Y_transform=transforms_dict['mu_a_transform'], 
+            fluence_transform=transforms_dict['fluence_transform'],
+            mask_transform=transforms_dict['mask_transform']
         ),
     }
     dataloaders = {
@@ -304,19 +273,28 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     }
     logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
         test: {len(datasets["test"])}')
-    return (datasets, dataloaders, normalise_x, normalise_y, normalise_fluence)
+    return (datasets, dataloaders, transforms_dict)
+
+
+def combine_datasets(args : argparse.Namespace,
+                     datasets : Dict[str, Dataset]) -> tuple:
+    combined_training_dataset = CombineMultipleDatasets(datasets)
+    train_loader = DataLoader(
+        combined_training_dataset, batch_size=args.train_batch_size, shuffle=False, num_workers=4
+    )
+    return (combined_training_dataset, train_loader)
 
 
 def create_embedding_dataloaders(args) -> tuple:
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='train', data_space='latent', fold=args.fold
+            args.synthetic_root_dir, split='train', data_space='latent', fold=args.fold
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='val', data_space='latent', fold=args.fold
+            args.synthetic_root_dir, split='val', data_space='latent', fold=args.fold
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
-            args.root_dir, split='test', data_space='latent', fold=args.fold
+            args.synthetic_root_dir, split='test', data_space='latent', fold=args.fold
         )
     }
     dataloaders = {

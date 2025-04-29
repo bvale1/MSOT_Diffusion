@@ -18,8 +18,9 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250327_ImageNet_MSOT_Dataset/', help='path to the root directory of the dataset')
-    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic'], default='synthetic', help='whether to use synthetic or experimental data')
+    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic', 'both'], default='synthetic', help='whether to use synthetic or experimental data')
+    parser.add_argument('--experimental_root_dir', type=str, default='/mnt/e/Dataset_for_Moving_beyond_simulation_data_driven_quantitative_photoacoustic_imaging_using_tissue_mimicking_phantoms/', help='path to the root directory of the experimental dataset.')
+    parser.add_argument('--synthetic_root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250327_ImageNet_MSOT_Dataset/', help='path to the root directory of the synthetic dataset')
     parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs, set to zero for testing')
     parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
@@ -66,12 +67,12 @@ if __name__ == '__main__':
 
     match args.synthetic_or_experimental:
         case 'experimental':
-            (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_e2eQPAT_dataloaders(
+            (datasets, dataloaders, transforms_dict) = uf.create_e2eQPAT_dataloaders(
                 args, model_name='DDIM', 
                 stats_path=os.path.join(args.root_dir, 'dataset_stats.json')
             )
         case 'synthetic':
-            (datasets, dataloaders, normalise_x, normalise_y, _) = uf.create_synthetic_dataloaders(
+            (datasets, dataloaders, transforms_dict) = uf.create_synthetic_dataloaders(
                 args=args, model_name='DDIM'
             )
     
@@ -101,17 +102,9 @@ if __name__ == '__main__':
     diffusion = diffusion.to(device)
     
     # ==================== Optimizer ====================
-    match args.synthetic_or_experimental:
-        case 'experimental':
-            # use exactly the same algorithm and hyperparamers as the e2eQPAT paper
-            optimizer = torch.optim.Adam(
-                model.parameters(), lr=args.lr
-            )
-        case 'synthetic':
-            # Gives a bit better convergance than default Adam in my experience
-            optimizer = torch.optim.Adam(
-                model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
-            )
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
+    )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, verbose=True, patience=10, factor=0.9
     )
@@ -225,11 +218,13 @@ if __name__ == '__main__':
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='none').mean(dim=(1, 2, 3))
             
             bg_test_metric_calculator(
-                Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[4] # background mask
+                Y=mu_a, Y_hat=mu_a_hat, Y_transform=transforms_dict['normalise_y'],
+                Y_mask=batch[4] # background mask
             )
             if args.synthetic_or_experimental == 'experimental':
                 inclusion_test_metric_calculator(
-                    Y=mu_a, Y_hat=mu_a_hat, Y_transform=normalise_y, Y_mask=batch[5] # inclusion mask
+                    Y=mu_a, Y_hat=mu_a_hat, Y_transform=transforms_dict['normalise_y']
+                    , Y_mask=batch[5] # inclusion mask
                 )
             best_and_worst_examples = uf.get_best_and_worst(
                 mu_a_loss, best_and_worst_examples, i
@@ -247,7 +242,8 @@ if __name__ == '__main__':
                 wandb.log({'test_tot_loss' : loss.item(),
                            'test_mu_a_loss' : mu_a_loss.item()})
                 if args.predict_fluence:
-                    wandb.log({'test_fluence_loss' : fluence_loss.item()})           
+                    wandb.log({'test_fluence_loss' : fluence_loss.item()})
+    
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'test_time: {total_test_time}')
     logging.info(f'test_time_per_batch: {total_test_time/len(dataloaders["test"])}')
@@ -279,6 +275,31 @@ if __name__ == '__main__':
                 checkpointer.dirpath, model.__class__.__name__ + f'_epoch{epoch}.pt'
             )
         )
+        
+    # to study overfitting, sample all images from the training set and calculate the loss
+    best_checkpoint_train_mu_a_loss = 0
+    best_checkpoint_val_mu_a_loss = 0
+    with torch.no_grad():
+        for i, batch in enumerate(dataloaders['train']):
+            X = batch[0].to(device); mu_a = batch[1].to(device)
+            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+            mu_a_hat = Y_hat[:, 0:1]
+            mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
+            best_checkpoint_mu_a_loss += loss.item()
+        for i, batch in enumerate(dataloaders['val']):
+            X = batch[0].to(device); mu_a = batch[1].to(device)
+            Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+            mu_a_hat = Y_hat[:, 0:1]
+            mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
+            best_checkpoint_val_mu_a_loss += loss.item()
+    best_checkpoint_mu_a_loss /= len(dataloaders['train'])
+    best_checkpoint_val_mu_a_loss /= len(dataloaders['val'])
+    overfitting_factor = best_checkpoint_val_mu_a_loss / best_checkpoint_train_mu_a_loss
+    logging.info(f'best_checkpoint_mu_a_loss: {best_checkpoint_mu_a_loss}')
+    logging.info(f'best_checkpoint_val_mu_a_loss: {best_checkpoint_val_mu_a_loss}')
+    logging.info(f'overfitting_factor: {overfitting_factor}')
+    if args.wandb_log:
+        wandb.log({'overfitting_factor' : overfitting_factor})
     
     # tracking and visualising best and worst examples can highlight model 
     # failier cases, or outliers in the dataset
@@ -302,7 +323,8 @@ if __name__ == '__main__':
             #fluence_hat = Y_hat[:, 1:2]
         uf.plot_test_examples(
             datasets['test'], checkpointer.dirpath, args, X, mu_a, mu_a_hat,
-            mask=mask, X_transform=normalise_x, Y_transform=normalise_y,
+            mask=mask, X_transform=transforms_dict['normalise_x'],
+            Y_transform=transforms_dict['normalise_y'],
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
             fig_titles=['test_example0', 'test_example1', 'test_example2',
                         'test_example_best', 'test_example_worst']

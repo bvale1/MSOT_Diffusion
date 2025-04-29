@@ -12,7 +12,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from abc import abstractmethod
 from typing import Union, Literal
 import torch.nn as nn
-
+from typing import Dict
 
 class KlDivergenceStandaredNormal(nn.Module):
     '''KL divergence between a normal distribution and a standard normal distribution.
@@ -316,7 +316,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         if self.mask_transform:
             bg_mask = self.mask_transform(bg_mask)
         
-        return (X, Y, fluence, wavelength_nm, bg_mask)
+        return (X, Y, fluence, wavelength_nm, bg_mask, torch.zeros_like(bg_mask))
     
 
 class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
@@ -422,6 +422,37 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         
         return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask)
 
+
+class CombineMultipleDatasets(Dataset):
+    def __init__(self, datasets : Dict[str, Dataset], seed : int=42) -> None:
+        """use to train on multiple datasets at once, samples from each dataset 
+        are shuffled and concatenated together.
+
+        Args:
+            datasets (List[Dataset]): list of pytorch datasets to combine
+            seed (int, optional): seed for shuffling the dataset. Defaults to 42.
+        """
+        super(CombineMultipleDatasets, self).__init__()
+        self.datasets = datasets
+        self.seed = seed
+        # Each sample in the combined dataset is a tuple of (dataset_name, sample_idx)
+        self.samples = []
+        for dataset_name, dataset in datasets.items():
+            dataset_samples = [(dataset_name, i) for i in range(len(dataset))]
+            self.samples.extend(dataset_samples)
+        # Shuffle the combined dataset
+        rng = np.random.RandomState(seed)
+        rng.shuffle(self.samples)
+        
+    def __len__(self) -> int:
+        return sum([d.__len__() for d in list(self.datasets.values())])
+    
+    def __getitem__(self, idx : int) -> tuple:
+        dataset_name, sub_idx = self.samples[idx]
+        sample = self.datasets[dataset_name].__getitem__(sub_idx)
+        return sample
+    
+    
 class CheckpointSaver:
     def __init__(self, dirpath : str, decreasing : bool=True, top_n : int=5,
                  wand_log : bool=False) -> None:
