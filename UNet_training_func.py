@@ -109,15 +109,17 @@ def UNet_test_epoch(args : arpgparse.Namespace,
         bg_test_metric_calculator.save_metrics_all_test_samples(
             os.path.join(args.save_dir, 'background_test_metrics.json')
         )
-        if args.synthetic_or_experimental == 'experimental':
+        if synthetic_or_experimental == 'experimental':
             inclusion_test_metric_calculator.save_metrics_all_test_samples(
                 os.path.join(args.save_dir, 'inclusion_test_metrics.json')
             )
     if args.wandb_log:
-        wandb.log(bg_test_metric_calculator.get_metrics())
-        if args.synthetic_or_experimental == 'experimental':
+        bg_metrics_dict = bg_test_metric_calculator.get_metrics()
+        bg_metrics_dict = {f'bg_{logging_prefix}_{key}': bg_metrics_dict[key] for key in bg_metrics_dict.keys()}
+        wandb.log(bg_metrics_dict)
+        if synthetic_or_experimental == 'experimental':
             inclusion_metrics_dict = inclusion_test_metric_calculator.get_metrics()
-            for key in inclusion_metrics_dict.keys():
-                wandb.log({'inclusion_'+key : inclusion_metrics_dict[key]})
+            inclusion_metrics_dict = {f'inclusion_{logging_prefix}_{key}': inclusion_metrics_dict[key] for key in inclusion_metrics_dict.keys()}
+            wandb.log(inclusion_metrics_dict)
         wandb.log({'test_time' : total_test_time,
                    'test_time_per_batch' : total_test_time/len(dataloader)})
