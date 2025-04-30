@@ -274,15 +274,16 @@ if __name__ == '__main__':
     # ==================== Save test examples ====================
     if args.save_test_examples:
         model.eval()               
-        (X_0, mu_a_0, _, wavelength_nm_0, mask_0) = examples_dataset[0][:5]
-        (X_1, mu_a_1, _, wavelength_nm_1, mask_1) = examples_dataset[1][:5]
-        (X_2, mu_a_2, _, wavelength_nm_2, mask_2) = examples_dataset[2][:5]
-        (X_3, mu_a_3, _, wavelength_nm_3, mask_3) = examples_dataset[3][:5]
-        (X_4, mu_a_4, _, wavelength_nm_4, mask_4) = examples_dataset[4][:5]
+        (X_0, mu_a_0, fluence0, wavelength_nm_0, mask_0) = examples_dataset[0][:5]
+        (X_1, mu_a_1, fluence1, wavelength_nm_1, mask_1) = examples_dataset[1][:5]
+        (X_2, mu_a_2, fluence2, wavelength_nm_2, mask_2) = examples_dataset[2][:5]
+        (X_3, mu_a_3, fluence3, wavelength_nm_3, mask_3) = examples_dataset[3][:5]
+        (X_4, mu_a_4, fluence5, wavelength_nm_4, mask_4) = examples_dataset[4][:5]
         
         X = torch.stack((X_0, X_1, X_2, X_3, X_4), dim=0).to(device)
-        mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, mu_a_3, mu_a_4), dim=0).to(device)
+        mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, mu_a_3, mu_a_4), dim=0)
         mask = torch.stack((mask_0, mask_1, mask_2, mask_3, mask_4), dim=0)
+        fluence = torch.stack((fluence0, fluence1, fluence2, fluence3, fluence5), dim=0)
         wavelength_nm = torch.stack(
             (wavelength_nm_0, wavelength_nm_1, wavelength_nm_2,
              wavelength_nm_3, wavelength_nm_4), dim=0
