@@ -20,8 +20,8 @@ def UNet_val_epoch(args : arpgparse.Namespace,
     total_val_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
-            (X, Y, fluence, wavelength_nm, _) = batch[:5]
-            X = X.to(device); Y = Y.to(device); 
+            (X, mu_a, fluence, wavelength_nm, _) = batch[:5]
+            X = X.to(device); mu_a = mu_a.to(device); 
 
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
@@ -32,7 +32,7 @@ def UNet_val_epoch(args : arpgparse.Namespace,
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
 
             mu_a_hat = Y_hat[:, 0:1]            
-            mu_a_loss = F.mse_loss(mu_a_hat, Y, reduction='mean')
+            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
             if args.predict_fluence:
                 fluence = fluence.to(device)
                 fluence_hat = Y_hat[:, 1:2]

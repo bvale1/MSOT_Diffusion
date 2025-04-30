@@ -250,7 +250,8 @@ if __name__ == '__main__':
             examples_transforms_dict = transforms_dict['synthetic']
     with torch.no_grad():        
         for i, batch in enumerate(train_loader):
-            X = batch[0].to(device); mu_a = batch[1].to(device)
+            (X, mu_a, _, wavelength_nm, _) = batch[:5]
+            X = X.to(device); mu_a.to(device)
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
