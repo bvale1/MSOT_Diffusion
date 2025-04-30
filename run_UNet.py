@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
     parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
     parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
+    parser.add_argument('--freeze_encoder', default=False, help='freeze the encoder', action='store_true')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -112,7 +113,11 @@ if __name__ == '__main__':
     if args.load_checkpoint_dir:
         model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
         logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
-            
+    
+    if args.freeze_encoder and args.model == 'UNet_e2eQPAT':
+        logging.info('freezing encoder')
+        model.freeze_encoder()
+
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
     print(f'number of parameters: {no_params}, model size: {no_params*4/(1024**2)} MB')
