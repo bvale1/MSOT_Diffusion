@@ -352,11 +352,12 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                  train : bool,
                  augment : bool,
                  use_all_data : bool,
-                 experimental_data : bool=True,
-                 X_transform=None,
-                 Y_transform=None,
-                 fluence_transform=None,
-                 mask_transform=None) -> None:
+                 experimental_data : bool=True, 
+                 shuffle : bool=False,
+                 X_transform : callable=None,
+                 Y_transform : callable=None,
+                 fluence_transform : callable=None,
+                 mask_transform : callable=None) -> None:
         
         vars(self).update(locals())
         self.cfg = stats
@@ -375,6 +376,11 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
                         tmp_files += files[idx * 21:(idx + 1) * 21]
             files = tmp_files
         self.files = files
+        # without shuffling each batch will mostly contain images of the same
+        # sample but at different wavelengths, shuffling may reduce overfitting
+        if shuffle:
+            rng = np.random.RandomState(42)
+            rng.shuffle(self.files)
         print(f"Found {len(files)} items.")
         
     def __len__(self):

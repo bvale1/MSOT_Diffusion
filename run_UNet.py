@@ -265,7 +265,7 @@ if __name__ == '__main__':
     best_checkpoint_train_mu_a_loss /= len(train_loader)
     best_checkpoint_val_mu_a_loss = checkpointer.best_metric_val
     overfitting_ratio = best_checkpoint_val_mu_a_loss / best_checkpoint_train_mu_a_loss
-    logging.info(f'best_checkpoint_mu_a_loss: {best_checkpoint_train_mu_a_loss}')
+    logging.info(f'best_checkpoint_train_mu_a_loss: {best_checkpoint_train_mu_a_loss}')
     logging.info(f'best_checkpoint_val_mu_a_loss: {best_checkpoint_val_mu_a_loss}')
     logging.info(f'overfitting_ratio: {overfitting_ratio}')
     if args.wandb_log:
