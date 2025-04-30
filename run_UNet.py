@@ -189,9 +189,11 @@ if __name__ == '__main__':
         model.eval()
         if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
             experimental_val_loss = UNet_val_epoch(
-                    args, model, dataloaders['experimental']['val'], 
-                    epoch, device, 'experimental_val'
-                )
+                args, model, dataloaders['experimental']['val'], 
+                epoch, device, 'experimental_val'
+            )
+            if args.wandb_log:
+                wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
             if args.save_dir:
                 # priority is given to the validation loss of the experimental data
                 checkpointer(model, epoch, experimental_val_loss)
@@ -202,13 +204,18 @@ if __name__ == '__main__':
                 args, model, dataloaders['synthetic']['val'], 
                 epoch, device, 'synthetic_val'
             )
+            if args.wandb_log:
+                wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
         if args.synthetic_or_experimental == 'synthetic':
             if args.save_dir: # save model checkpoint if validation loss is lower than previous best
                 checkpointer(model, epoch, synthetic_val_loss)
             if not args.no_lr_scheduler:
                 scheduler.step(synthetic_val_loss)
             
-        logging.info(f'lr: {scheduler.get_last_lr()}')
+        logging.info(f'lr: {scheduler.get_last_lr()[0]}')
+        if args.wandb_log:
+            wandb.log({'lr' : scheduler.get_last_lr()[0],
+                       'mean_train_loss' : total_train_loss/len(train_loader)})
         
     
     # ==================== Testing ====================
