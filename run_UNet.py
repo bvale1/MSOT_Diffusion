@@ -261,7 +261,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
             mu_a_hat = Y_hat[:, 0:1]
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
-            best_checkpoint_train_mu_a_loss += loss.item()
+            best_checkpoint_train_mu_a_loss += mu_a_loss.item()
     best_checkpoint_train_mu_a_loss /= len(train_loader)
     best_checkpoint_val_mu_a_loss = checkpointer.best_metric_val
     overfitting_ratio = best_checkpoint_val_mu_a_loss / best_checkpoint_train_mu_a_loss

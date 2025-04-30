@@ -258,7 +258,7 @@ df = pd.read_csv(file)
 columns = df.columns.values
 
 print('============================== Predict Fluence ==============================')
-
+'''
 # print TeX results table for pretraining on synthetic data
 pretrain_df = df.loc[df['Notes'] == 'pretrain']
 #print(f'Pretrain shape: {pretrain_df.shape}')
@@ -295,7 +295,7 @@ print_double_tex_reslts_table(
     '{Performance metrics for training on the experimental dataset. Mean and standard deviation of 5 runs.}',
     '{tab:experimental_test_metrics}'
 )
-
+'''
 print('============================== No Fluence ==============================')
 
 # print TeX results table for pretraining on synthetic data
@@ -306,7 +306,7 @@ print_single_tex_reslts_table(
     '{Performance metrics for training on the synthetic ImageNet phantom dataset. Mean and standard deviation of 5 runs.}',
     '{tab:ImageNet_pretrain_metrics}'
 )
-'''
+
 # print TeX results table for testing on digimouse synthetic data
 digimouse_df = df.loc[df['Notes'] == 'digimouse_3d_test']
 #print(f'Digimouse shape: {digimouse_df.shape}')
@@ -334,10 +334,10 @@ print_double_tex_reslts_table(
     '{Performance metrics for training on the experimental dataset. Mean and standard deviation of 5 runs.}',
     '{tab:experimental_test_metrics}'
 )
-'''
+
 
 print('============================== No Fluence, No lr Scheduler ==============================')
-
+'''
 # print TeX results table for pretraining on synthetic data
 pretrain_df = df.loc[df['Notes'] == 'pretrain_no_fluence_no_lr_scheduler']
 #print(f'Pretrain shape: {pretrain_df.shape}')
@@ -346,3 +346,4 @@ print_single_tex_reslts_table(
     '{Performance metrics for training on the synthetic ImageNet phantom dataset. Mean and standard deviation of 5 runs.}',
     '{tab:ImageNet_pretrain_metrics}'
 )
+'''
