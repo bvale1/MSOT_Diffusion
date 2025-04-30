@@ -251,7 +251,7 @@ if __name__ == '__main__':
     with torch.no_grad():        
         for i, batch in enumerate(train_loader):
             (X, mu_a, _, wavelength_nm, _) = batch[:5]
-            X = X.to(device); mu_a.to(device)
+            X = X.to(device); mu_a = mu_a.to(device)
             match args.model:
                 case 'UNet_smp' | 'UNet_e2eQPAT':
                     Y_hat = model(X)
