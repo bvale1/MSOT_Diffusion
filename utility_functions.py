@@ -125,7 +125,7 @@ def define_transforms(args : argparse.Namespace, normalise_params) -> tuple:
         ),
         normalise_x
     ])
-    y_transform = transforms.Compose([
+    mu_a_transform = transforms.Compose([
         ReplaceNaNWithZero(),
         transforms.Resize(
             (args.image_size, args.image_size),
@@ -151,7 +151,7 @@ def define_transforms(args : argparse.Namespace, normalise_params) -> tuple:
     transforms_dict = {
         'x_transform' : x_transform,
         'normalise_x' : normalise_x,
-        'mu_a_transform' : y_transform,
+        'mu_a_transform' : mu_a_transform,
         'normalise_mu_a' : normalise_mu_a,
         'fluence_transform' : fluence_transform,
         'normalise_fluence' : normalise_fluence,

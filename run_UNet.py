@@ -16,7 +16,7 @@ import denoising_diffusion_pytorch as ddp
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
-from UNet_training_func import UNet_val_epoch, UNet_test_epoch
+from UNet_training_steps import UNet_val_epoch, UNet_test_epoch
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -155,8 +155,8 @@ if __name__ == '__main__':
         model.train()
         total_train_loss = 0
         for i, batch in enumerate(train_loader):
-            (X, Y, fluence, wavelength_nm, _) = batch[:5]
-            X = X.to(device); Y = Y.to(device); 
+            (X, mu_a, fluence, wavelength_nm, _) = batch[:5]
+            X = X.to(device); mu_a = mu_a.to(device); 
             optimizer.zero_grad()
             
             match args.model:
@@ -168,7 +168,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
 
             mu_a_hat = Y_hat[:, 0:1]            
-            mu_a_loss = F.mse_loss(mu_a_hat, Y, reduction='mean')
+            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
             if args.predict_fluence:
                 fluence = fluence.to(device)
                 fluence_hat = Y_hat[:, 1:2]
