@@ -127,7 +127,7 @@ if __name__ == '__main__':
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=args.lr, eps=1e-3, amsgrad=True
+        model.parameters(), lr=args.lr, eps=1e-8, amsgrad=True
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, verbose=True, patience=10, factor=0.9
@@ -331,3 +331,4 @@ if __name__ == '__main__':
                 f.create_dataset('wavelength_nm', data=wavelength_nm.cpu().numpy())
     if args.wandb_log:
         wandb.finish()
+
