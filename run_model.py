@@ -5,18 +5,20 @@ import torch
 import os
 import json
 import h5py
-import timeit
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
-import segmentation_models_pytorch as smp
 import denoising_diffusion_pytorch as ddp
 
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
-from UNet_training_steps import UNet_val_epoch, UNet_test_epoch
+from epoch_steps import val_epoch, test_epoch
+
+# An all purpose script for training, validating and testing the models
+# to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
+# --objective and --self_condition are only for diffusion (DDIM)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -37,13 +39,15 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
-    parser.add_argument('--model', choices=['UNet_smp', 'UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation'], default='UNet_smp', help='model to train')
+    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM'], default='UNet_e2eQPAT', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
     parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
     parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
     parser.add_argument('--freeze_encoder', default=False, help='freeze the encoder', action='store_true')
+    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='DDIM only, objective of the diffusion model')
+    parser.add_argument('--self_condition', default=False, help='DDIM only, condition on the previous timestep', action='store_true')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -71,11 +75,11 @@ if __name__ == '__main__':
     
     # ==================== Data ====================
     (experimental_datasets, experimental_dataloaders, experimental_transforms_dict) = uf.create_e2eQPAT_dataloaders(
-        args, args.model, 
+        args, model_name=args.model, 
         stats_path=os.path.join(args.experimental_root_dir, 'dataset_stats.json')
     )
     (synthetic_datasets, synthetic_dataloaders, synthetic_transforms_dict) = uf.create_synthetic_dataloaders(
-        args, args.model
+        args, model_name=args.model
     )
     datasets = {'synthetic' : synthetic_datasets, 'experimental' : experimental_datasets}
     dataloaders = {'synthetic' : synthetic_dataloaders, 'experimental' : experimental_dataloaders}
@@ -86,18 +90,12 @@ if __name__ == '__main__':
         )
         datasets['combined'] = {'train' : combined_training_dataset}
         dataloaders['combined'] = {'train' : train_loader}
+        
     # ==================== Model ====================
     image_size = (args.image_size, args.image_size)
     channels = datasets['synthetic']['test'][0][0].shape[-3]
     out_channels = channels * 2 if args.predict_fluence else channels
     match args.model:
-        case 'UNet_smp':
-            model = smp.Unet(
-                encoder_name='resnet101', encoder_weights='imagenet',
-                decoder_attention_type='scse', # @article{roy2018recalibrating, title={Recalibrating fully convolutional networks with spatial and channel “squeeze and excitation” blocks}, author={Roy, Abhijit Guha and Navab, Nassir and Wachinger, Christian}, journal={IEEE transactions on medical imaging}, volume={38}, number={2}, pages={540--549}, year={2018}, publisher={IEEE}}
-                in_channels=channels, classes=out_channels
-            )
-            uf.reset_weights(model)
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
                 in_channels=channels, out_channels=out_channels,
@@ -109,14 +107,33 @@ if __name__ == '__main__':
                 self_condition=False, image_condition=False, full_attn=False,
                 flash_attn=False, learned_sinusoidal_cond=False
             )
+        case 'DDIM':
+            out_channels = channels * 2 if args.predict_fluence else channels
+            model = ddp.Unet(
+                dim=32, channels=out_channels, out_dim=out_channels,
+                self_condition=args.self_condition, image_condition=True, 
+                image_condition_channels=channels, full_attn=False, flash_attn=False
+            )
+            diffusion = ddp.GaussianDiffusion(
+                # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
+                model, image_size=image_size, timesteps=1000,
+                sampling_timesteps=100, objective=args.objective, auto_normalize=False,
+            )
     
     if args.load_checkpoint_dir:
         model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
         logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
     
-    if args.freeze_encoder and args.model == 'UNet_e2eQPAT':
+    if args.freeze_encoder:
         logging.info('freezing encoder')
-        model.freeze_encoder()
+        if args.model == 'UNet_e2eQPAT':
+            logging.info('freezing encoder')
+            model.freeze_encoder()
+        else:
+            for param in model.init_conv.parameters():
+                param.requires_grad = False
+            for param in model.downs.parameters():
+                param.requires_grad = False
 
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
@@ -124,6 +141,8 @@ if __name__ == '__main__':
     if args.wandb_log: 
         wandb.log({'number_of_parameters' : no_params})
     model.to(device)
+    if args.model == 'DDIM':
+        diffusion.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
     optimizer = torch.optim.Adam(
@@ -141,7 +160,6 @@ if __name__ == '__main__':
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
             json.dump(var_args, f, indent=4)
     
-    
     # ==================== Training ====================
     match args.synthetic_or_experimental:
         case 'synthetic':
@@ -155,28 +173,42 @@ if __name__ == '__main__':
         model.train()
         total_train_loss = 0
         for i, batch in enumerate(train_loader):
-            (X, mu_a, fluence, wavelength_nm, _) = batch[:5]
-            X = X.to(device); mu_a = mu_a.to(device); 
+            X = batch[0].to(device); mu_a = batch[1].to(device); 
+            fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
             optimizer.zero_grad()
             
             match args.model:
-                case 'UNet_smp' | 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                case 'DDIM':
+                    if args.predict_fluence:
+                        loss = diffusion.forward(torch.cat((mu_a, fluence), dim=1), x_cond=X)
+                    else:
+                        loss = diffusion.forward(mu_a, x_cond=X)
 
-            mu_a_hat = Y_hat[:, 0:1]            
-            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
-            if args.predict_fluence:
-                fluence = fluence.to(device)
-                fluence_hat = Y_hat[:, 1:2]
-                fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='mean')
-                loss = mu_a_loss + fluence_loss
-            else:
-                loss = mu_a_loss
-            total_train_loss += loss.item()            
+            match args.model:
+                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
+                    mu_a_hat = Y_hat[:, 0:1]            
+                    mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
+                    if args.predict_fluence:
+                        fluence_hat = Y_hat[:, 1:2]
+                        fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='mean')
+                        loss = mu_a_loss + fluence_loss
+                    else:
+                        loss = mu_a_loss
+                case 'DDIM':
+                    mu_a_loss = loss[:, 0:1].mean()
+                    if args.predict_fluence:
+                        fluence_loss = loss[:, 1:2].mean()
+                        loss = mu_a_loss + fluence_loss
+                    else:
+                        loss = mu_a_loss
+                        
+            total_train_loss += loss.item()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -191,32 +223,37 @@ if __name__ == '__main__':
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(train_loader)}')
         
         # ==================== Validation epoch ====================
-        model.eval()
-        if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
-            experimental_val_loss = UNet_val_epoch(
-                args, model, dataloaders['experimental']['val'], 
-                epoch, device, 'experimental_val'
-            )
-            if args.wandb_log:
-                wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
-            if args.save_dir:
-                # priority is given to the validation loss of the experimental data
-                checkpointer(model, epoch, experimental_val_loss)
-            if not args.no_lr_scheduler:
-                scheduler.step(experimental_val_loss)
-        if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
-            synthetic_val_loss = UNet_val_epoch(
-                args, model, dataloaders['synthetic']['val'], 
-                epoch, device, 'synthetic_val'
-            )
-            if args.wandb_log:
-                wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
-        if args.synthetic_or_experimental == 'synthetic':
-            if args.save_dir: # save model checkpoint if validation loss is lower than previous best
-                checkpointer(model, epoch, synthetic_val_loss)
-            if not args.no_lr_scheduler:
-                scheduler.step(synthetic_val_loss)
-            
+        # only validate every 10 epochs for DDIM, due to the long sampling time
+        if (args.model != 'DDIM') or ((epoch+1) % 10 == 0):
+            model.eval()
+            if args.model == 'DDIM':
+                diffusion.eval()
+            module = diffusion if args.model == 'DDIM' else model
+            if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
+                experimental_val_loss = val_epoch(
+                    args, module, dataloaders['experimental']['val'], 
+                    epoch, device, 'experimental_val'
+                )
+                if args.wandb_log:
+                    wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
+                if args.save_dir:
+                    # priority is given to the validation loss of the experimental data
+                    checkpointer(model, epoch, experimental_val_loss)
+                if not args.no_lr_scheduler:
+                    scheduler.step(experimental_val_loss)
+            if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
+                synthetic_val_loss = val_epoch(
+                    args, module, dataloaders['synthetic']['val'], 
+                    epoch, device, 'synthetic_val'
+                )
+                if args.wandb_log:
+                    wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
+            if args.synthetic_or_experimental == 'synthetic':
+                if args.save_dir: # save model checkpoint if validation loss is lower than previous best
+                    checkpointer(model, epoch, synthetic_val_loss)
+                if not args.no_lr_scheduler:
+                    scheduler.step(synthetic_val_loss)
+                
         logging.info(f'lr: {scheduler.get_last_lr()[0]}')
         if args.wandb_log:
             wandb.log({'lr' : scheduler.get_last_lr()[0],
@@ -227,15 +264,18 @@ if __name__ == '__main__':
     logging.info('loading checkpoint with best validation loss for testing')
     checkpointer.load_best_model(model)
     model.eval()
+    if args.model == 'DDIM':
+        diffusion.eval()
+    module = diffusion if args.model == 'DDIM' else model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
-        experimental_test_loss = UNet_test_epoch(
-            args, model, dataloaders['experimental']['test'], 
+        experimental_test_loss = test_epoch(
+            args, module, dataloaders['experimental']['test'], 
             'experimental', device, transforms_dict['experimental'], 
             'experimental_test'
         )
     if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':
-        synthetic_test_loss = UNet_test_epoch(
-            args, model, dataloaders['synthetic']['test'], 
+        synthetic_test_loss = test_epoch(
+            args, module, dataloaders['synthetic']['test'], 
             'synthetic', device, transforms_dict['synthetic'], 
             'synthetic_test'
         )
@@ -265,12 +305,14 @@ if __name__ == '__main__':
             (X, mu_a, _, wavelength_nm, _) = batch[:5]
             X = X.to(device); mu_a = mu_a.to(device)
             match args.model:
-                case 'UNet_smp' | 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                case 'DDIM':
+                    Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             mu_a_hat = Y_hat[:, 0:1]
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
             best_checkpoint_train_mu_a_loss += mu_a_loss.item()
@@ -302,12 +344,14 @@ if __name__ == '__main__':
         ).to(device)
         with torch.no_grad():
             match args.model:
-                case 'UNet_smp' | 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                case 'DDIM':
+                    Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
         mu_a_hat = Y_hat[:, 0:1]
         if args.predict_fluence:
             fluence_hat = Y_hat[:, 1:2]

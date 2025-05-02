@@ -109,7 +109,7 @@ def print_double_tex_reslts_table(models_dict_left : dict, header_left : str,
     print(tex_table_string)
 
 # load dataframe and convert to numpy array
-file = 'wandb_export_2025-05-01T15_05_51.496+01_00.csv'
+file = 'wandb_export_2025-05-02T13_03_17.917+01_00.csv'
 df = pd.read_csv(file)
 columns = df.columns.values
 
@@ -483,6 +483,34 @@ print_double_tex_reslts_table(
     get_metrics_dict(experimental_fine_tune_df, models, inclusion_metrics_dict, convert_m_to_cm=False),
     '{Inclusions}',
     '{No Fluence, amsgrad, frozen encoder, lr 1e-4, eps 1e-8. Performance metrics for fine-tuning on the experimental dataset. Checkpoints from No fluence table. Mean and standard deviation of 5 runs.}',
+    '{tab:experimental_test_metrics}',
+    metric_headers
+)
+
+print('============================== both_amsgrad_lr1em4_eps1em8 ==============================')
+
+experimental_fine_tune_df = df.loc[df['Notes'] == 'both_amsgrad_lr1em4_eps1em8']
+print(experimental_fine_tune_df.shape[0])
+print_double_tex_reslts_table(
+    get_metrics_dict(experimental_fine_tune_df, models, bg_metrics_dict, convert_m_to_cm=False),
+    '{Background}',
+    get_metrics_dict(experimental_fine_tune_df, models, inclusion_metrics_dict, convert_m_to_cm=False),
+    '{Inclusions}',
+    '{amsgrad, lr 1e-4, eps 1e-8. Performance metrics for training on both datasets simultaniously. Mean and standard deviation of 5 runs.}',
+    '{tab:experimental_test_metrics}',
+    metric_headers
+)
+
+print('============================== e2eQPAT_fine_tune_amsgrad_lr1em4_eps1em8 ==============================')
+
+experimental_fine_tune_df = df.loc[df['Notes'] == 'e2eQPAT_fine_tune_amsgrad_lr1em4_eps1em8']
+print(experimental_fine_tune_df.shape[0])
+print_double_tex_reslts_table(
+    get_metrics_dict(experimental_fine_tune_df, models, bg_metrics_dict, convert_m_to_cm=False),
+    '{Background}',
+    get_metrics_dict(experimental_fine_tune_df, models, inclusion_metrics_dict, convert_m_to_cm=False),
+    '{Inclusions}',
+    '{amsgrad, lr 1e-4, eps 1e-8. Performance metrics for fine-tuning on the experimental dataset. Mean and standard deviation of 5 runs.}',
     '{tab:experimental_test_metrics}',
     metric_headers
 )

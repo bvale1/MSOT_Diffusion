@@ -41,14 +41,3 @@ The correponding experimental dataset
   author={Gr{\"o}hl, Janek and Else, Thomas and Hacker, Lina and Bunce, Ellie and Sweeney, Paul and Bohndiek, Sarah},
   year={2023}
 }
-
-The code in the folder 'vq_vae' is from the VQ-VAE implementation 
-by PyTorch nand K Subramanian. The LICENSE.md is provided.
-@misc{Subramanian2020,
-  author = {Subramanian, A.K},
-  title = {PyTorch-VAE},
-  year = {2020},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/AntixK/PyTorch-VAE}}
-}
