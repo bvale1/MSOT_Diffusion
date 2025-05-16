@@ -29,6 +29,7 @@ MANIFEST
 # results files
 *.csv
 *.png
+*.svg
 *.jpeg
 *.h5
 *2025*
