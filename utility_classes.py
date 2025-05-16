@@ -485,7 +485,7 @@ class CheckpointSaver:
         else:
             save = metric_val>self.best_metric_val
         if save: 
-            logging.info(f"Current metric value better than {metric_val} better than best {self.best_metric_val}, saving model at {model_path}, & logging model weights to W&B.")
+            logging.info(f"Current metric value {metric_val} better than best {self.best_metric_val}, saving model at {model_path}, & logging model weights to W&B.")
             self.best_metric_val = metric_val
             torch.save(model.state_dict(), model_path)
             self.log_artifact(f'model-ckpt-epoch-{epoch}.pt', model_path, metric_val)

@@ -128,7 +128,7 @@ def test_epoch(args : arpgparse.Namespace,
             inclusion_metrics_dict = inclusion_test_metric_calculator.get_metrics()
             inclusion_metrics_dict = {f'inclusion_{logging_prefix}_{key}': inclusion_metrics_dict[key] for key in inclusion_metrics_dict.keys()}
             wandb.log(inclusion_metrics_dict)
-        wandb.log({'test_time' : total_test_time,
-                   'test_time_per_batch' : total_test_time/len(dataloader)})
+        wandb.log({f'{logging_prefix}_time' : total_test_time,
+                   f'{logging_prefix}_time_per_batch' : total_test_time/len(dataloader)})
         
     return total_test_loss

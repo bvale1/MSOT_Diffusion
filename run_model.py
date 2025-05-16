@@ -104,7 +104,7 @@ if __name__ == '__main__':
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
             model = ddp.Unet(
                 dim=32, channels=channels, out_dim=out_channels,
-                self_condition=False, image_condition=False, full_attn=False,
+                self_condition=False, image_condition=False, full_attn=True,
                 flash_attn=False, learned_sinusoidal_cond=False
             )
         case 'DDIM':
@@ -112,7 +112,7 @@ if __name__ == '__main__':
             model = ddp.Unet(
                 dim=32, channels=out_channels, out_dim=out_channels,
                 self_condition=args.self_condition, image_condition=True, 
-                image_condition_channels=channels, full_attn=False, flash_attn=False
+                image_condition_channels=channels, full_attn=True, flash_attn=False
             )
             diffusion = ddp.GaussianDiffusion(
                 # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
@@ -156,7 +156,7 @@ if __name__ == '__main__':
             optimizer, warmup_period=args.warmup_period
         )
     if args.save_dir:
-        checkpointer = uc.CheckpointSaver(args.save_dir)
+        checkpointer = uc.CheckpointSaver(args.save_dir, top_n=1)
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
             json.dump(var_args, f, indent=4)
     
@@ -230,9 +230,10 @@ if __name__ == '__main__':
                 diffusion.eval()
             module = diffusion if args.model == 'DDIM' else model
             if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
-                experimental_val_loss = val_epoch(
+                experimental_val_loss = test_epoch(
                     args, module, dataloaders['experimental']['val'], 
-                    epoch, device, 'experimental_val'
+                    epoch, device, transforms_dict['experimental'],
+                    'experimental_val'
                 )
                 if args.wandb_log:
                     wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
@@ -242,9 +243,10 @@ if __name__ == '__main__':
                 if not args.no_lr_scheduler:
                     scheduler.step(experimental_val_loss)
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
-                synthetic_val_loss = val_epoch(
+                synthetic_val_loss = test_epoch(
                     args, module, dataloaders['synthetic']['val'], 
-                    epoch, device, 'synthetic_val'
+                    epoch, device, transforms_dict['synthetic'],
+                    'synthetic_val'
                 )
                 if args.wandb_log:
                     wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
