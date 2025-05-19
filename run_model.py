@@ -48,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--freeze_encoder', default=False, help='freeze the encoder', action='store_true')
     parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='DDIM only, objective of the diffusion model')
     parser.add_argument('--self_condition', default=False, help='DDIM only, condition on the previous timestep', action='store_true')
+    parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
     
     args = parser.parse_args()
     var_args = vars(args)
@@ -104,15 +105,16 @@ if __name__ == '__main__':
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
             model = ddp.Unet(
                 dim=32, channels=channels, out_dim=out_channels,
-                self_condition=False, image_condition=False, full_attn=True,
-                flash_attn=False, learned_sinusoidal_cond=False
+                self_condition=False, image_condition=False, use_attn=args.attention,
+                full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
             )
         case 'DDIM':
             out_channels = channels * 2 if args.predict_fluence else channels
             model = ddp.Unet(
                 dim=32, channels=out_channels, out_dim=out_channels,
                 self_condition=args.self_condition, image_condition=True, 
-                image_condition_channels=channels, full_attn=True, flash_attn=False
+                image_condition_channels=channels, use_attn=args.attention,
+                full_attn=False, flash_attn=False
             )
             diffusion = ddp.GaussianDiffusion(
                 # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
