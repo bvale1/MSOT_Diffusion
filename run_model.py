@@ -123,7 +123,7 @@ if __name__ == '__main__':
             #    full_attn=False, flash_attn=False
             #)
             model = TimeConditionedResUNet(
-                dim_in=channels, dim_out=out_channels, dim_first_layer=64,
+                dim_in=out_channels, dim_out=out_channels, dim_first_layer=64,
                 kernel_size=3, theta_pos_emb=10000, self_condition=args.self_condition,
                 image_condition=True, dim_image_condition=channels
             )
