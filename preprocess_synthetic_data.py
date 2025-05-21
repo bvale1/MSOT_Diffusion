@@ -228,9 +228,7 @@ if __name__ == '__main__':
             #corrected_image = data[image]['p0_tr'] / Phi_clamped # [Pa J^-1] / [m^-2] -> [J m^-3 J^-1] * [m^2] -> [m^-1]
             # corrected image is depricated because the calculation numerically unstable
             # either absorption coefficient, or fluence may be used as the target
-            mu_a = data[image]['mu_a']
-            
-            Phi = Phi / cfg['LaserEnergy'][j] 
+            mu_a = data[image]['mu_a']            
             
             bg_mask = square_centre_crop(
                 np.squeeze(data[image]['bg_mask']), dataset_cfg['crop_size']

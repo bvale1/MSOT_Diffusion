@@ -15,6 +15,7 @@ import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
 from epoch_steps import val_epoch, test_epoch
+from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
 
 # An all purpose script for training, validating and testing the models
 # to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
@@ -103,18 +104,28 @@ if __name__ == '__main__':
                 initial_filter_size=64, kernel_size=3
             )
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
-            model = ddp.Unet(
-                dim=32, channels=channels, out_dim=out_channels,
-                self_condition=False, image_condition=False, use_attn=args.attention,
-                full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
+            #model = ddp.Unet(
+            #    dim=32, channels=channels, out_dim=out_channels,
+            #    self_condition=False, image_condition=False, use_attn=args.attention,
+            #    full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
+            #)
+            model = TimeConditionedResUNet(
+                dim_in=channels, dim_out=out_channels, dim_first_layer=64,
+                kernel_size=3, theta_pos_emb=10000, self_condition=False,
+                image_condition=False
             )
         case 'DDIM':
             out_channels = channels * 2 if args.predict_fluence else channels
-            model = ddp.Unet(
-                dim=32, channels=out_channels, out_dim=out_channels,
-                self_condition=args.self_condition, image_condition=True, 
-                image_condition_channels=channels, use_attn=args.attention,
-                full_attn=False, flash_attn=False
+            #model = ddp.Unet(
+            #    dim=32, channels=out_channels, out_dim=out_channels,
+            #    self_condition=args.self_condition, image_condition=True, 
+            #    image_condition_channels=channels, use_attn=args.attention,
+            #    full_attn=False, flash_attn=False
+            #)
+            model = TimeConditionedResUNet(
+                dim_in=channels, dim_out=out_channels, dim_first_layer=64,
+                kernel_size=3, theta_pos_emb=10000, self_condition=args.self_condition,
+                image_condition=True, dim_image_condition=channels
             )
             diffusion = ddp.GaussianDiffusion(
                 # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise

@@ -110,7 +110,7 @@ def print_double_tex_reslts_table(models_dict_left : dict, header_left : str,
     print(tex_table_string)
 
 # load dataframe and convert to numpy array
-file = '/home/wv00017/MSOT_Diffusion/figures_and_tables/wandb_export_2025-05-16T14_52_56.719+01_00.csv'
+file = '/home/wv00017/MSOT_Diffusion/figures_and_tables/wandb_export_2025-05-20T14_58_01.228+01_00.csv'
 df = pd.read_csv(file)
 columns = df.columns.values
 
@@ -574,13 +574,43 @@ inclusion_model_dict['UNet_e2eQPAT_fine_tune'] = get_metrics_dict(
     df.loc[df['Notes'] == 'e2eQPAT_fine_tune_amsgrad_lr1em4_eps1em8'], models, inclusion_metrics_dict, convert_m_to_cm=False
 )['UNet_e2eQPAT']
 
+models = ['UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
+bg_model_dict.update(get_metrics_dict(
+    df.loc[df['Notes'] == 'e2eQPAT_fine_tune_amsgrad_lr1em4_eps1em8'], models, bg_metrics_dict, convert_m_to_cm=False
+))
+inclusion_model_dict.update(get_metrics_dict(
+    df.loc[df['Notes'] == 'e2eQPAT_fine_tune_amsgrad_lr1em4_eps1em8'], models, inclusion_metrics_dict, convert_m_to_cm=False
+))
+
 print_double_tex_reslts_table(
     bg_model_dict,
     '{Background}',
     inclusion_model_dict,
     '{Inclusions}',
-    '{amsgrad, lr 1e-4, eps 1e-8. Performance metrics for experimental dataset. Mean and standard deviation of 5 runs.}',
+    '{amsgrad, lr 1e-4, eps 1e-8. Performance metrics for fine-tuning on experimental dataset. Checkpoints trained with eps 1e-8, Mean and standard deviation of 5 runs.}',
     '{tab:experimental_test_metrics}',
     metric_headers,
     header_len='4'
+)
+
+print('============================== e2eQPAT_synthetic_noAtten ==============================')
+metric_headers = """RMSE (cm$^{{-1}}$) & Abs. Error (cm$^{{-1}}$) & Rel. Error (\\%) & PSNR & SSIM & val loss/train loss"""
+#models = ['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
+models = ['UNet_wl_pos_emb']
+bg_metrics_dict = {
+    'bg_synthetic_test_mean_RMSE' : [None]*5,
+    'bg_synthetic_test_mean_MAE' : [None]*5,
+    'bg_synthetic_test_mean_Rel_Err' : [None]*5,
+    'bg_synthetic_test_mean_PSNR' : [None]*5,
+    'bg_synthetic_test_mean_SSIM' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+
+pretrain_df = df.loc[df['Notes'] == 'pretrain_lr1em3_eps1em8_noAttn']
+print(pretrain_df.shape[0])
+print_single_tex_reslts_table(
+    get_metrics_dict(pretrain_df, models, bg_metrics_dict, convert_m_to_cm=True),
+    '{Pretrain, lr 1e-3, eps 1e-8, noAttn. Performance metrics for training on the synthetic ImageNet phantom dataset. Mean and standard deviation of 5 runs.}',
+    '{tab:ImageNet_pretrain_metrics}',
+    metric_headers
 )
