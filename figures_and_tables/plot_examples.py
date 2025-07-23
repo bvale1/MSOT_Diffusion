@@ -4,7 +4,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from compute_outputs import compute_outputs
 
-
+save_dir = 'examples_with_pretrained_and_not_pretrained_models'
 models_dirs = [
     ('Not pre-trained', '20250430_UNet_e2eQPAT.Naisurrey26.j783005/RegressionUNet_epoch199.pt'),
     ('pre-trained', '20250501_UNet_e2eQPAT.Naisurrey25.j783389/RegressionUNet_epoch199.pt')    
@@ -13,6 +13,8 @@ colors = ['blue', 'red']
 sample_indices = np.arange(10, 379, 21).astype(int)
 
 outputs_dict, dx = compute_outputs(models_dirs, sample_indices)
+
+
 
 plt.rcParams.update({'font.size': 12})
 for i in range(len(sample_indices)):
@@ -30,7 +32,7 @@ for i in range(len(sample_indices)):
               -dx*X.shape[-1]/2, dx*X.shape[-1]/2]
     line_profile_ax = np.linspace(-dx*X.shape[-2]/2, dx*X.shape[-2]/2, X.shape[-2])
     
-    fig, ax = plt.subplots(2, 2, figsize=(8, 8))
+    fig, ax = plt.subplots(2, 3, figsize=(8, 8))
     
     img1 = ax[0, 0].imshow(
         X, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,

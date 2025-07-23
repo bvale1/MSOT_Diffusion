@@ -79,7 +79,13 @@ def print_double_tex_reslts_table(models_dict_left : dict, header_left : str,
     \\label{{table}}
     \\setlength{{\\tabcolsep}}{{3pt}}
     %\\begin{{tabular}}{{|p{{25pt}}|p{{75pt}}|p{{115pt}}|}}
-    \\resizebox{{\\textwidth}}{{!}}""" + """{""" + f"""\\begin{{tabular}}{{|l|l|l|l|l|l|l|l|l|l|l|l|l|}}
+    \\resizebox{{\\textwidth}}{{!}}""" + """{""" + f"""\\begin{{tabular}}""" + """{{|l|"""
+
+    for i in range(2*int(header_len[1])):
+        tex_table_string += f"""l|"""
+    tex_table_string += """}}"""
+    
+    tex_table_string += f"""
     \\hline
     \\multirow{{2}}{{*}}{{Model}} & \\multicolumn{header_len}{{|l|}}{header_left} & \\multicolumn{header_len}{{|l|}}{header_right} \\\\
     \\cline{{2-13}}
@@ -110,7 +116,7 @@ def print_double_tex_reslts_table(models_dict_left : dict, header_left : str,
     print(tex_table_string)
 
 # load dataframe and convert to numpy array
-file = '/home/wv00017/MSOT_Diffusion/figures_and_tables/wandb_export_2025-05-20T14_58_01.228+01_00.csv'
+file = '/home/wv00017/MSOT_Diffusion/figures_and_tables/wandb_export_2025-05-30T11_22_32.543+01_00.csv'
 df = pd.read_csv(file)
 columns = df.columns.values
 
@@ -590,10 +596,10 @@ print_double_tex_reslts_table(
     '{amsgrad, lr 1e-4, eps 1e-8. Performance metrics for fine-tuning on experimental dataset. Checkpoints trained with eps 1e-8, Mean and standard deviation of 5 runs.}',
     '{tab:experimental_test_metrics}',
     metric_headers,
-    header_len='4'
+    header_len='{4}'
 )
 
-print('============================== e2eQPAT_synthetic_noAtten ==============================')
+print('============================== unet_wl_pos_emb_synthetic_noAttn ==============================')
 metric_headers = """RMSE (cm$^{{-1}}$) & Abs. Error (cm$^{{-1}}$) & Rel. Error (\\%) & PSNR & SSIM & val loss/train loss"""
 #models = ['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
 models = ['UNet_wl_pos_emb']
@@ -613,4 +619,82 @@ print_single_tex_reslts_table(
     '{Pretrain, lr 1e-3, eps 1e-8, noAttn. Performance metrics for training on the synthetic ImageNet phantom dataset. Mean and standard deviation of 5 runs.}',
     '{tab:ImageNet_pretrain_metrics}',
     metric_headers
+)
+
+print('============================== e2eQPAT_fine_tune_lr1em4_eps1em8_noAttn ==============================')
+
+metric_headers = """RMSE (cm$^{{-1}}$) & Rel. Error (\\%) & PSNR & val loss/train loss"""
+#models = ['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
+models = ['UNet_wl_pos_emb']
+bg_metrics_dict = {
+    'bg_experimental_test_mean_RMSE' : [None]*5,
+    'bg_experimental_test_mean_Rel_Err' : [None]*5,
+    'bg_experimental_test_mean_PSNR' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+inclusion_metrics_dict = {
+    'inclusion_experimental_test_mean_RMSE' : [None]*5,
+    'inclusion_experimental_test_mean_Rel_Err' : [None]*5,
+    'inclusion_experimental_test_mean_PSNR' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+pretrain_df = df.loc[df['Notes'] == 'e2eQPAT_fine_tune_noAttn_lr1em4_eps1em8']
+
+print_double_tex_reslts_table(
+    get_metrics_dict(experimental_fine_tune_df, models, bg_metrics_dict, convert_m_to_cm=False),
+    '{Background}',
+    get_metrics_dict(experimental_fine_tune_df, models, inclusion_metrics_dict, convert_m_to_cm=False),
+    '{Inclusions}',
+    '{fine tune, noAttn, lr1e-4.}',
+    '{tab:experimental_test_metrics}',
+    metric_headers, header_len='{4}'
+)
+
+print('============================== pretrain_timeCondUnet_lr1e-3 ==============================')
+metric_headers = """RMSE (cm$^{{-1}}$) & Rel. Error (\\%) & PSNR & val loss/train loss"""
+#models = ['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
+models = ['UNet_wl_pos_emb', 'DDIM']
+bg_metrics_dict = {
+    'bg_synthetic_test_mean_RMSE' : [None]*5,
+    'bg_synthetic_test_mean_Rel_Err' : [None]*5,
+    'bg_synthetic_test_mean_PSNR' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+
+pretrain_df = df.loc[df['Notes'] == 'pretrain_tCondUnet']
+print(pretrain_df.shape[0])
+print_single_tex_reslts_table(
+    get_metrics_dict(pretrain_df, models, bg_metrics_dict, convert_m_to_cm=True),
+    '{Pretrain, lr 1e-3, timeCondUnet.}',
+    '{tab:ImageNet_pretrain_metrics}',
+    metric_headers
+)
+
+print('============================== fine_timeCondUnet_lr1e-4 ==============================')
+
+metric_headers = """RMSE (cm$^{{-1}}$) & Rel. Error (\\%) & PSNR & val loss/train loss"""
+#models = ['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM']
+models = ['UNet_wl_pos_emb', 'DDIM']
+bg_metrics_dict = {
+    'bg_experimental_test_mean_RMSE' : [None]*5,
+    'bg_experimental_test_mean_Rel_Err' : [None]*5,
+    'bg_experimental_test_mean_PSNR' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+inclusion_metrics_dict = {
+    'inclusion_experimental_test_mean_RMSE' : [None]*5,
+    'inclusion_experimental_test_mean_Rel_Err' : [None]*5,
+    'inclusion_experimental_test_mean_PSNR' : [None]*5,
+    'overfitting_ratio' : [None]*5
+}
+pretrain_df = df.loc[df['Notes'] == 'e2eQPAT_fine_tune_tCondUnet']
+
+print_double_tex_reslts_table(
+    get_metrics_dict(experimental_fine_tune_df, models, bg_metrics_dict, convert_m_to_cm=False),
+    '{Background}',
+    get_metrics_dict(experimental_fine_tune_df, models, inclusion_metrics_dict, convert_m_to_cm=False),
+    '{Inclusions}',
+    '{fine tune timeCondUnet, lr1e-4.}',
+    '{tab:experimental_test_metrics}',
+    metric_headers, header_len='{4}'
 )

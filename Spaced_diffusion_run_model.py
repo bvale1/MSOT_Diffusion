@@ -11,12 +11,14 @@ import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
 
+from DiT.diffusion import create_diffusion
+from DiT.models import DiT
+
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
 from epoch_steps import val_epoch, test_epoch
 from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
-from nn_modules.DiT import DiT
 
 # An all purpose script for training, validating and testing the models
 # to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
@@ -134,7 +136,9 @@ if __name__ == '__main__':
                 sampling_timesteps=100, objective=args.objective, auto_normalize=False,
             )
         case 'DiT':
+            in_channels = channels * 3 if args.predict_fluence else channels * 2
             out_channels = channels * 2 if args.predict_fluence else channels
+            out_channels *= 2 # the model also outputs the variance for each channel
             # parameters depth=12, hidden_size=384, and num_heads=6 are the same as DiT-S/8.
             # with an image size of 256 and patch size of 16, we have the 
             # same number of patches as ViT from an image is worth 16x16 words
@@ -142,15 +146,10 @@ if __name__ == '__main__':
                 raise ValueError('image size must be divisible by 16 for DiT model')
             patch_size = image_size[0] // 16
             model = DiT(
-                dim_in=out_channels, dim_out=out_channels, input_size=image_size, 
-                depth=12, hidden_size=384, patch_size=patch_size, num_heads=6,
-                self_condition=args.self_condition, image_condition=True
+                input_size=image_size, in_channels=in_channels, out_channels=out_channels,
+                depth=12, hidden_size=384, patch_size=patch_size, num_heads=6
             )
-            diffusion = ddp.GaussianDiffusion(
-                # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-                model, image_size=image_size, timesteps=1000,
-                sampling_timesteps=100, objective=args.objective, auto_normalize=False,
-            )
+            diffusion = create_diffusion(timestep_respacing="")  # default: 1000 steps, linear noise schedule
             
     
     if args.load_checkpoint_dir:
@@ -174,7 +173,7 @@ if __name__ == '__main__':
     if args.wandb_log: 
         wandb.log({'number_of_parameters' : no_params})
     model.to(device)
-    if args.model in ['DDIM', 'DiT']:
+    if args.model == 'DDIM':
         diffusion.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
@@ -217,11 +216,17 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     if args.predict_fluence:
                         loss = diffusion.forward(torch.cat((mu_a, fluence), dim=1), x_cond=X)
                     else:
-                        loss = diffusion.forward(mu_a, y=X)
+                        loss = diffusion.forward(model, mu_a, y=X)
+                case 'DiT':
+                    t = torch.randint(0, diffusion.num_timesteps, (mu_a.shape[0],), device=device)
+                    if args.predict_fluence:
+                        loss = diffusion.training_losses(model, torch.cat((mu_a, fluence), dim=1), t, X)['loss']
+                    else:
+                        loss = diffusion.training_losses(model, mu_a, t, X)['loss']
 
             match args.model:
                 case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
@@ -233,13 +238,15 @@ if __name__ == '__main__':
                         loss = mu_a_loss + fluence_loss
                     else:
                         loss = mu_a_loss
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     mu_a_loss = loss[:, 0:1].mean()
                     if args.predict_fluence:
                         fluence_loss = loss[:, 1:2].mean()
                         loss = mu_a_loss + fluence_loss
                     else:
                         loss = mu_a_loss
+                case 'DiT':
+                    breakpoint()
                         
             total_train_loss += loss.item()
             loss.backward()
@@ -257,11 +264,11 @@ if __name__ == '__main__':
         
         # ==================== Validation epoch ====================
         # only validate every 10 epochs for DDIM, due to the long sampling time
-        if (args.model not in ['DDIM', 'DiT']) or ((epoch+1) % 10 == 0):
+        if (args.model != 'DDIM') or ((epoch+1) % 10 == 0):
             model.eval()
-            if args.model in ['DDIM', 'DiT']:
+            if args.model == 'DDIM':
                 diffusion.eval()
-            module = diffusion if args.model in ['DDIM', 'DiT'] else model
+            module = diffusion if args.model == 'DDIM' else model
             if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
                 experimental_val_loss = test_epoch(
                     args, module, dataloaders['experimental']['val'], 
@@ -299,9 +306,9 @@ if __name__ == '__main__':
     logging.info('loading checkpoint with best validation loss for testing')
     checkpointer.load_best_model(model)
     model.eval()
-    if args.model in ['DDIM', 'DiT']:
+    if args.model == 'DDIM':
         diffusion.eval()
-    module = diffusion if args.model in ['DDIM', 'DiT'] else model
+    module = diffusion if args.model == 'DDIM' else model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
         experimental_test_loss = test_epoch(
             args, module, dataloaders['experimental']['test'], 
@@ -346,7 +353,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
             mu_a_hat = Y_hat[:, 0:1]
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
@@ -385,7 +392,7 @@ if __name__ == '__main__':
                     Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
         mu_a_hat = Y_hat[:, 0:1]
         if args.predict_fluence:

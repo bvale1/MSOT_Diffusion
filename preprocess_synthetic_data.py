@@ -16,6 +16,8 @@ from utility_functions import square_centre_crop
 # │   │   ├── bg_mask (background mask)
 # │   │   ├── wavelength_nm (wavelength in nm)
 # │   │   ├── laser_energy (laser energy in J)
+# │   │   ├── sensor_data (optional, sensor data in Pa)
+# │   │   ├── scattering_coefficient (optional, scattering coefficient in m^-1)
 # │   ├── ...
 # │   ├── sample_n_name
 # │   │   ├── X (reconstucted pressure image in Pa J^-1)
@@ -25,6 +27,8 @@ from utility_functions import square_centre_crop
 # │   │   ├── bg_mask (background mask)
 # │   │   ├── wavelength_nm (wavelength in nm)
 # │   │   ├── laser_energy (laser energy in J)
+# │   │   ├── sensor_data (optional, sensor data in Pa)
+# │   │   ├── scattering_coefficient (optional, scattering coefficient in m^-1)
 # ├── train
 # │   ├── 0 (fold 0 sample names)
 # │   ├── ...
@@ -55,20 +59,35 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str,
-        default='20250327_ImageNet_MSOT_Dataset'
+        #default='20250716_ImageNet_MSOT_Dataset'
+        default='20250716_digimouse_MSOT_Dataset'
+        #default='20250327_ImageNet_MSOT_Dataset'
         #default='20250327_digimouse_MSOT_Dataset'
         #default='20250327_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
-        default = '/mnt/e/ImageNet_MSOT_simulations' # from wsl
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse'
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse'
+        #default = '/mnt/e/ImageNet_MSOT_simulations_noPositivityConstraint' # from wsl
+        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse_no_positivity_constraint'
+        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse_no_positivity_constraint'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
     parser.add_argument(
         '--delete_failed_samples', action='store_true', default=False, 
         help='delete samples that do not pass the vibe check (sanity checks)'
+    )
+    parser.add_argument(
+        '--X_key', type=str, #default='p0_tr',
+        default='p0_tr_no_positivty_constraint',
+        help='key for the reconstructed pressure image in the h5 file'
+    )
+    parser.add_argument(
+        '--include_sensor_data', action='store_true', default=False,
+        help='include sensor data in the dataset (256x2030 per image)'
+    )
+    parser.add_argument(
+        '--include_scattering_coefficient', action='store_true', default=False,
+        help='include scattering coefficient in the dataset (256x256 per image)'
     )
     
     args = parser.parse_args()
@@ -80,10 +99,10 @@ if __name__ == '__main__':
         'n_images': 0,
         'dx' : 0.0001,
         'crop_size' : 256,
-        'train_val_test_split' : [0.8, 0.1, 0.1], # 80% train, 10% val, 10% test
-        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
-        'folds' : 5,
-        #'folds' : 1,
+        #'train_val_test_split' : [0.8, 0.1, 0.1], # 80% train, 10% val, 10% test
+        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        #'folds' : 5,
+        'folds' : 1,
         'units' : {
             'X' : 'Pa J^-1', 'Phi' : 'm^-2', 
             #'corrected_image' : 'm^-1 J^-1',
@@ -102,6 +121,18 @@ if __name__ == '__main__':
             'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
         }
     }
+    if args.include_sensor_data:
+        dataset_cfg['units']['sensor_data'] = 'arbitrary units'
+        dataset_cfg['include_sensor_data'] = True
+        dataset_cfg['normalisation_sensor_data'] = {
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
+        }
+    if args.include_scattering_coefficient:
+        dataset_cfg['units']['mu_s'] = 'm^-1'
+        dataset_cfg['include_scattering_coefficient'] = True
+        dataset_cfg['normalisation_mu_s'] = {
+            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
+        }
     if (dataset_cfg['train_val_test_split'][1]+dataset_cfg['train_val_test_split'][2]) * dataset_cfg['folds'] > 1.0:
         raise ValueError(f'Not enough samples for {dataset_cfg['folds']} folds with train_test_split={dataset_cfg['train_val_test_split']}')
     
@@ -195,8 +226,8 @@ if __name__ == '__main__':
             
             group_name = (sim_name.split('/')[-1]+'_'+image.split('__')[-1]).replace('.','')
             
-            if ('p0_tr' not in data[image].keys()):
-                logging.info(f'p0_tr not found in {group_name}, skipping sample')
+            if (args.X_key not in data[image].keys()):
+                logging.info(f'{args.X_key} not found in {group_name}, skipping sample')
                 if args.delete_failed_samples:
                     delete_group_from_h5(file_path=sim, group_name=image)
                 continue
@@ -215,20 +246,27 @@ if __name__ == '__main__':
                 if args.delete_failed_samples:
                     delete_group_from_h5(file_path=sim, group_name=image)
                 continue
+            if args.include_sensor_data and ('sensor_data' not in data[image].keys()):
+                logging.info(f'sensor_data not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
+                continue
+            if args.include_scattering_coefficient and ('mu_s' not in data[image].keys()):
+                logging.info(f'scattering_coefficient not found in {group_name}, skipping sample')
+                if args.delete_failed_samples:
+                    delete_group_from_h5(file_path=sim, group_name=image)
+                continue
                 
             # X is the reconstrcuted pressure image divided by the laser energy (laser energy normalisation)
-            X = data[image]['p0_tr'] / cfg['LaserEnergy'][j]
+            X = data[image][args.X_key] / cfg['LaserEnergy'][j] # [Pa] -> [Pa J^-1]
             # Phi is the fluence and is also normalised by the laser energy before being saved
             Phi = data[image]['Phi'] / cfg['LaserEnergy'][j] # [J m^-2] -> [m^-2]
-            # corrected_image is the fluence (Phi) corrected image
-            # fluence (Phi) is clamped at 1e-8 to avoid division by zero
-            #Phi_clamped = Phi.copy()
-            #Phi_clamped[Phi_clamped < 1e-8] = 1e-8
-            # due to the clamping, the corrected image is also clampe
-            #corrected_image = data[image]['p0_tr'] / Phi_clamped # [Pa J^-1] / [m^-2] -> [J m^-3 J^-1] * [m^2] -> [m^-1]
-            # corrected image is depricated because the calculation numerically unstable
             # either absorption coefficient, or fluence may be used as the target
-            mu_a = data[image]['mu_a']            
+            mu_a = data[image]['mu_a'] # [m^-1]
+            if args.include_sensor_data: # energy normalising sensor data is too numerical unstable
+                sensor_data = data[image]['sensor_data'] # [Pa]
+            if args.include_scattering_coefficient:
+                mu_s = data[image]['mu_s'] # [m^-1]
             
             bg_mask = square_centre_crop(
                 np.squeeze(data[image]['bg_mask']), dataset_cfg['crop_size']
@@ -261,6 +299,14 @@ if __name__ == '__main__':
             dataset_cfg['normalisation_mu_a']['max'] = max(dataset_cfg['normalisation_mu_a']['max'], float(np.max(mu_a)))
             dataset_cfg['normalisation_mu_a']['min'] = min(dataset_cfg['normalisation_mu_a']['min'], float(np.min(mu_a)))
             dataset_cfg['normalisation_mu_a']['mean'] += float(np.mean(mu_a) / n_images)
+            if args.include_sensor_data:
+                dataset_cfg['normalisation_sensor_data']['max'] = max(dataset_cfg['normalisation_sensor_data']['max'], float(np.max(sensor_data)))
+                dataset_cfg['normalisation_sensor_data']['min'] = min(dataset_cfg['normalisation_sensor_data']['min'], float(np.min(sensor_data)))
+                dataset_cfg['normalisation_sensor_data']['mean'] += float(np.mean(sensor_data) / n_images)
+            if args.include_scattering_coefficient:
+                dataset_cfg['normalisation_mu_s']['max'] = max(dataset_cfg['normalisation_mu_s']['max'], float(np.max(mu_s)))
+                dataset_cfg['normalisation_mu_s']['min'] = min(dataset_cfg['normalisation_mu_s']['min'], float(np.min(mu_s)))
+                dataset_cfg['normalisation_mu_s']['mean'] += float(np.mean(mu_s) / n_images)
             
             with h5py.File(file_path, 'r+') as f:
                 image_group = f['samples'].require_group(image)
@@ -270,12 +316,18 @@ if __name__ == '__main__':
                 image_group.create_dataset('mu_a', data=mu_a, dtype=np.float32)
                 image_group.create_dataset('bg_mask', data=bg_mask, dtype=bool)
                 image_group.create_dataset('wavelength_nm', data=wavelength_nm, dtype=int)
-                image_group.create_dataset('laser_energy', data=cfg['LaserEnergy'][j], dtype=float)
+                image_group.create_dataset('laser_energy_J', data=cfg['LaserEnergy'][j], dtype=float)
+                if args.include_sensor_data:
+                    image_group.create_dataset('sensor_data', data=sensor_data, dtype=np.float32)
+                if args.include_scattering_coefficient:
+                    image_group.create_dataset('mu_s', data=mu_s, dtype=np.float32)
                 
     ssr_X = 0.0
     ssr_phi = 0.0
     #ssr_corrected_image = 0.0
     ssr_mu_a = 0.0
+    ssr_sensor_data = 0.0
+    ssr_mu_s = 0.0
     
     # calculate standard deviation
     logging.info(f'Calculating standard deviations')
@@ -286,11 +338,19 @@ if __name__ == '__main__':
             ssr_phi += np.sum((f['samples'][image]['Phi'][()] - dataset_cfg['normalisation_Phi']['mean'])**2) / denomitator
             #ssr_corrected_image += np.sum((f['samples'][image]['corrected_image'][()] - dataset_cfg['normalisation_corrected_image']['mean'])**2) / denomitator
             ssr_mu_a += np.sum((f['samples'][image]['mu_a'][()] - dataset_cfg['normalisation_mu_a']['mean'])**2) / denomitator
+            if args.include_sensor_data:
+                ssr_sensor_data += np.sum((f['samples'][image]['sensor_data'][()] - dataset_cfg['normalisation_sensor_data']['mean'])**2) / denomitator
+            if args.include_scattering_coefficient:
+                ssr_mu_s += np.sum((f['samples'][image]['mu_a'][()] - dataset_cfg['normalisation_mu_s']['mean'])**2) / denomitator
                 
     dataset_cfg['normalisation_X']['std'] = float(np.sqrt(ssr_X))
     dataset_cfg['normalisation_Phi']['std'] = float(np.sqrt(ssr_phi))
     #dataset_cfg['normalisation_corrected_image']['std'] = float(np.sqrt(ssr_corrected_image))
     dataset_cfg['normalisation_mu_a']['std'] = float(np.sqrt(ssr_mu_a))
+    if args.include_sensor_data:
+        dataset_cfg['normalisation_sensor_data']['std'] = float(np.sqrt(ssr_sensor_data))
+    if args.include_scattering_coefficient:
+        dataset_cfg['normalisation_mu_s']['std'] = float(np.sqrt(ssr_mu_s))
     
     print(f'dataset_cfg {dataset_cfg}')
     
