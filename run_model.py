@@ -17,6 +17,7 @@ import utility_functions as uf
 from epoch_steps import val_epoch, test_epoch
 from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
 from nn_modules.DiT import DiT
+from nn_modules.swin_unet import SwinTransformerSys
 
 # An all purpose script for training, validating and testing the models
 # to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
     parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
-    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM', 'DiT'], default='UNet_e2eQPAT', help='model to train')
+    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'Swin_UNet', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM', 'DiT'], default='UNet_e2eQPAT', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
@@ -115,6 +116,15 @@ if __name__ == '__main__':
                 kernel_size=3, theta_pos_emb=10000, self_condition=False,
                 image_condition=False
             )
+        case 'Swin_UNet':
+            model = SwinTransformerSys(
+                img_size=image_size[0], patch_size=4, in_chans=channels, num_classes=out_channels,
+                embed_dim=96, depths=[2, 2, 2, 2], depths_decoder=[1, 2, 2, 2], num_heads=[3, 6, 12, 24],
+                window_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                norm_layer=nn.LayerNorm, ape=False, patch_norm=False,
+                final_upsample="expand_first"
+            )
         case 'DDIM':
             out_channels = channels * 2 if args.predict_fluence else channels
             #model = ddp.Unet(
@@ -138,9 +148,10 @@ if __name__ == '__main__':
             # parameters depth=12, hidden_size=384, and num_heads=6 are the same as DiT-S/8.
             # with an image size of 256 and patch size of 16, we have the 
             # same number of patches as ViT from an image is worth 16x16 words
-            if image_size[0] % 16 != 0:
-                raise ValueError('image size must be divisible by 16 for DiT model')
-            patch_size = image_size[0] // 16
+            #if image_size[0] % 16 != 0:
+            #    raise ValueError('image size must be divisible by 16 for DiT model')
+            #patch_size = image_size[0] // 16
+            patch_size = 4
             model = DiT(
                 dim_in=out_channels, dim_out=out_channels, input_size=image_size, 
                 depth=12, hidden_size=384, patch_size=patch_size, num_heads=6,
@@ -211,7 +222,7 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             
             match args.model:
-                case 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
@@ -224,7 +235,7 @@ if __name__ == '__main__':
                         loss = diffusion.forward(mu_a, y=X)
 
             match args.model:
-                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
+                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'Swin_UNet':
                     mu_a_hat = Y_hat[:, 0:1]            
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
                     if args.predict_fluence:
@@ -340,7 +351,7 @@ if __name__ == '__main__':
             (X, mu_a, _, wavelength_nm, _) = batch[:5]
             X = X.to(device); mu_a = mu_a.to(device)
             match args.model:
-                case 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.to(device).squeeze())
@@ -379,7 +390,7 @@ if __name__ == '__main__':
         ).to(device)
         with torch.no_grad():
             match args.model:
-                case 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = model(X, wavelength_nm.squeeze())

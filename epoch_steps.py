@@ -24,7 +24,7 @@ def val_epoch(args : arpgparse.Namespace,
             fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
 
             match args.model:
-                case 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = module(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = module(X, wavelength_nm.squeeze())
@@ -71,7 +71,7 @@ def test_epoch(args : arpgparse.Namespace,
             fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
 
             match args.model:
-                case 'UNet_e2eQPAT':
+                case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = module(X)
                 case 'UNet_wl_pos_emb':
                     Y_hat = module(X, wavelength_nm.squeeze())
