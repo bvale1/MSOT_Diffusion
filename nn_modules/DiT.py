@@ -167,9 +167,10 @@ class DiT(nn.Module):
         mlp_ratio=4.0,
         self_condition : bool=False, # whether the finial prediction from the previous timestep will be used as conditional information
         image_condition : bool=False, # whether an image will be provided as conditional information
-        dim_image_condition : int=1 # added to support image conditioning
-        #class_dropout_prob=0.1, # removed for image guided generation
-        #num_classes=1000, # removed for image guided generation
+        wavelength_condition : bool=False, # whether wavelength will be provided as conditional information
+        dim_image_condition : int=1, # added to support image conditioning
+        class_dropout_prob=0.0, # set zero for image guided generation
+        num_wavelengths=1000 # changed from n_classes for wavelength guided generation
         #learn_sigma=True, # removed to use with denoising_diffusion_python.GaussianDiffusion class
     ):
         super().__init__()
@@ -193,6 +194,7 @@ class DiT(nn.Module):
         self.dim_out = dim_out
         self.self_condition = self_condition
         self.image_condition = image_condition
+        self.wavelength_condition = wavelength_condition
         self.dim_image_condition = dim_image_condition 
         
         self.patch_size = patch_size
@@ -200,7 +202,7 @@ class DiT(nn.Module):
 
         self.x_embedder = PatchEmbed(input_size, patch_size, self.dim_in, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
-        #self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
+        self.wavelength_embedder = LabelEmbedder(num_wavelengths, hidden_size, class_dropout_prob)
         num_patches = self.x_embedder.num_patches
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
@@ -230,7 +232,7 @@ class DiT(nn.Module):
         nn.init.constant_(self.x_embedder.proj.bias, 0)
 
         # Initialize label embedding table:
-        # nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02) # removed for image guided generation
+        nn.init.normal_(self.wavelength_embedder.embedding_table.weight, std=0.02) # changed for wavelength guided generation
 
         # Initialize timestep embedding MLP:
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
@@ -262,7 +264,7 @@ class DiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, x_self_cond = None, x_cond = None):
+    def forward(self, x, t, x_self_cond = None, x_cond = None, wavelength_cond = None):
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)
@@ -288,11 +290,14 @@ class DiT(nn.Module):
         #x = torch.cat((x, x_cond), dim=1) # (N, T, D) added to support image conditioning 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
-        #y = self.y_embedder(y, self.training)    # (N, D) # removed class conditioning 
-        c = t# + y                                # (N, D) # can use this for wavelength conditioning?
+        if wavelength_cond:
+            wavelength_cond = self.wavelength_embedder(wavelength_cond, self.training)    # (N, D) # removed class conditioning 
+            c = t + wavelength_cond              # (N, D) # can use this for wavelength conditioning?
+        else:
+            c = t
         for block in self.blocks:
             x = block(x, c)                      # (N, T, D)
-        x = self.final_layer(x, c)                # (N, T, patch_size ** 2 * out_channels)
+        x = self.final_layer(x, c)               # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x)                   # (N, out_channels, H, W)
         return x
 
