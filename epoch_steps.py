@@ -30,8 +30,14 @@ def val_epoch(args : arpgparse.Namespace,
                     Y_hat = module(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = module(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     Y_hat = module.sample(batch_size=X.shape[0], x_cond=X)
+                case 'DiT':
+                    Y_hat = module.sample(
+                        batch_size=X.shape[0], 
+                        x_cond=X,
+                        wavelength_cond=wavelength_nm.squeeze()
+                    )
 
             mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
@@ -77,8 +83,14 @@ def test_epoch(args : arpgparse.Namespace,
                     Y_hat = module(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = module(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     Y_hat = module.sample(batch_size=X.shape[0], x_cond=X)
+                case 'DiT':
+                    Y_hat = module.sample(
+                        batch_size=X.shape[0], 
+                        x_cond=X,
+                        wavelength_cond=wavelength_nm.squeeze()
+                    )
 
             mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')            

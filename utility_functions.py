@@ -36,6 +36,17 @@ def get_best_and_worst(loss : torch.Tensor,
     return best_and_worst_examples
 
 
+def remove_softmax(module : nn.Module) -> None:
+    '''
+    Remove all Softmax layers from a model.
+    '''
+    for name, m in module.named_children():
+        if isinstance(m, torch.nn.Softmax):
+            setattr(module, name, torch.nn.Identity())
+        elif hasattr(m, 'children'):
+            remove_softmax(m)
+            
+
 def remove_dropout(module : nn.Module) -> None:
     '''
     Remove all Dropout layers from a model.

@@ -137,7 +137,7 @@ metrics_dict = {
 metric_headers = """RMSE (cm$^{{-1}}$) & Abs. Error (cm$^{{-1}}$) & Rel. Error (\\%) & R$^{{2}}$ & PSNR & SSIM"""
 
 print('============================== Predict Fluence ==============================')
-'''
+
 # print TeX results table for pretraining on synthetic data
 pretrain_df = df.loc[df['Notes'] == 'pretrain']
 #print(f'Pretrain shape: {pretrain_df.shape}')
@@ -177,9 +177,9 @@ print_double_tex_reslts_table(
     '{tab:experimental_test_metrics}',
     metric_headers
 )
-'''
 
-print('============================== Janeks, weights ==============================')
+
+print('============================== Janeks weights ==============================')
 experimental_from_scratch_df = df.loc[df['Notes'] == 'e2eQPAT_Janeks_weights']
 models = ['UNet_e2eQPAT']
 inclusion_metrics_dict = {

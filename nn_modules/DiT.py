@@ -290,7 +290,7 @@ class DiT(nn.Module):
         #x = torch.cat((x, x_cond), dim=1) # (N, T, D) added to support image conditioning 
         x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
         t = self.t_embedder(t)                   # (N, D)
-        if wavelength_cond:
+        if type(wavelength_cond) == torch.Tensor:
             wavelength_cond = self.wavelength_embedder(wavelength_cond, self.training)    # (N, D) # removed class conditioning 
             c = t + wavelength_cond              # (N, D) # can use this for wavelength conditioning?
         else:

@@ -106,16 +106,16 @@ if __name__ == '__main__':
                 initial_filter_size=64, kernel_size=3
             )
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
-            #model = ddp.Unet(
-            #    dim=32, channels=channels, out_dim=out_channels,
-            #    self_condition=False, image_condition=False, use_attn=args.attention,
-            #    full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
-            #)
-            model = TimeConditionedResUNet(
-                dim_in=channels, dim_out=out_channels, dim_first_layer=64,
-                kernel_size=3, theta_pos_emb=10000, self_condition=False,
-                image_condition=False
+            model = ddp.Unet(
+                dim=32, channels=channels, out_dim=out_channels,
+                self_condition=False, image_condition=False, use_attn=args.attention,
+                full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
             )
+            #model = TimeConditionedResUNet(
+            #    dim_in=channels, dim_out=out_channels, dim_first_layer=64,
+            #    kernel_size=3, theta_pos_emb=10000, self_condition=False,
+            #    image_condition=False
+            #)
         case 'Swin_UNet':
             model = SwinTransformerSys(
                 img_size=image_size[0], patch_size=4, in_chans=channels, num_classes=out_channels,
@@ -125,19 +125,20 @@ if __name__ == '__main__':
                 norm_layer=nn.LayerNorm, ape=False, patch_norm=False,
                 final_upsample="expand_first"
             )
+            uf.remove_softmax(model)
         case 'DDIM':
             out_channels = channels * 2 if args.predict_fluence else channels
-            #model = ddp.Unet(
-            #    dim=32, channels=out_channels, out_dim=out_channels,
-            #    self_condition=args.self_condition, image_condition=True, 
-            #    image_condition_channels=channels, use_attn=args.attention,
-            #    full_attn=False, flash_attn=False
-            #)
-            model = TimeConditionedResUNet(
-                dim_in=out_channels, dim_out=out_channels, dim_first_layer=64,
-                kernel_size=3, theta_pos_emb=10000, self_condition=args.self_condition,
-                image_condition=True, dim_image_condition=channels
+            model = ddp.Unet(
+                dim=32, channels=out_channels, out_dim=out_channels,
+                self_condition=args.self_condition, image_condition=True, 
+                image_condition_channels=channels, use_attn=args.attention,
+                full_attn=False, flash_attn=False
             )
+            #model = TimeConditionedResUNet(
+            #    dim_in=out_channels, dim_out=out_channels, dim_first_layer=64,
+            #    kernel_size=3, theta_pos_emb=10000, self_condition=args.self_condition,
+            #    image_condition=True, dim_image_condition=channels
+            #)
             diffusion = ddp.GaussianDiffusion(
                 # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
                 model, image_size=image_size, timesteps=1000,
@@ -225,18 +226,32 @@ if __name__ == '__main__':
                 case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
+                    Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
+                case 'DDIM':
                     if args.predict_fluence:
                         loss = diffusion.forward(torch.cat((mu_a, fluence), dim=1), x_cond=X)
                     else:
-                        loss = diffusion.forward(mu_a, y=X)
+                        loss = diffusion.forward(mu_a, x_cond=X)
+                case 'DiT':
+                    if args.predict_fluence:
+                        loss = diffusion.forward(
+                            torch.cat((mu_a, fluence), dim=1),
+                            x_cond=X, 
+                            wavelength_cond=wavelength_nm.squeeze()
+                        )
+                    else:
+                        loss = diffusion.forward(
+                            mu_a,
+                            x_cond=X, 
+                            wavelength_cond=wavelength_nm.squeeze()
+                        )
 
             match args.model:
                 case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'Swin_UNet':
-                    mu_a_hat = Y_hat[:, 0:1]            
+                    mu_a_hat = Y_hat[:, 0:1] 
+                    breakpoint()
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
                     if args.predict_fluence:
                         fluence_hat = Y_hat[:, 1:2]
