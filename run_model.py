@@ -250,8 +250,7 @@ if __name__ == '__main__':
 
             match args.model:
                 case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'Swin_UNet':
-                    mu_a_hat = Y_hat[:, 0:1] 
-                    breakpoint()
+                    mu_a_hat = Y_hat[:, 0:1]
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
                     if args.predict_fluence:
                         fluence_hat = Y_hat[:, 1:2]
