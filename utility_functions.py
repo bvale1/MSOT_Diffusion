@@ -1,5 +1,6 @@
 import wandb
 import json
+import yaml
 import os
 import logging
 import argparse
@@ -10,6 +11,44 @@ from torch.utils.data import DataLoader
 from typing import Callable, Union
 
 from utility_classes import *
+
+
+def get_config() -> tuple[argparse.Namespace, dict]:
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic', 'both'], default='synthetic', help='whether to use synthetic or experimental data')
+    parser.add_argument('--experimental_root_dir', type=str, default='/home/billy/Datasets/Dataset_for_Moving_beyond_simulation_data_driven_quantitative_photoacoustic_imaging_using_tissue_mimicking_phantoms/', help='path to the root directory of the experimental dataset.')
+    parser.add_argument('--synthetic_root_dir', type=str, default='/home/billy/Datasets/20250716_ImageNet_MSOT_Dataset/', help='path to the root directory of the synthetic dataset')
+    parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
+    parser.add_argument('--epochs', type=int, default=200, help='number of training epochs, set to zero or one to test code')
+    parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
+    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference, 4x train_batch_size should have similar device memory requirements')
+    parser.add_argument('--image_size', type=int, default=256, help='image size')
+    parser.add_argument('--save_test_examples', help='save test examples to save_dir and wandb', action='store_true', default=False)
+    parser.add_argument('--wandb_log', help='use wandb logging', action='store_true', default=False)
+    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
+    parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
+    parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
+    parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
+    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'Swin_UNet', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM', 'DiT', 'EDM2'], default='EDM2', help='model to train')
+    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
+    parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
+    parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
+    parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
+    parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
+    parser.add_argument('--freeze_encoder', default=False, help='freeze the encoder', action='store_true')
+    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='DDIM only, objective of the diffusion model')
+    parser.add_argument('--self_condition', default=False, help='DDIM only, condition on the previous timestep', action='store_true')
+    parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
+    parser.add_argument('--std_data', type=float, default=0.5, help='standard normalisation only, expected std of the data after normalisation')
+    parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
+
+    args = parser.parse_args()
+    var_args = vars(args)
+    logging.info(f'args dict: {var_args}')
+
+    return (args, var_args)
 
 
 def square_centre_crop(image : np.ndarray, size : int) -> np.ndarray:
@@ -104,29 +143,32 @@ def define_transforms(args : argparse.Namespace, normalise_params) -> tuple:
         case 'minmax':
             normalise_x = DatasetMaxMinNormalise(
                 torch.Tensor([normalise_params['normalisation_X']['max']]),
-                torch.Tensor([normalise_params['normalisation_X']['min']])
+                torch.Tensor([normalise_params['normalisation_X']['min']]),
             )
             normalise_mu_a = DatasetMaxMinNormalise(
                 torch.Tensor([normalise_params['normalisation_mu_a']['max']]),
-                torch.Tensor([normalise_params['normalisation_mu_a']['min']])
+                torch.Tensor([normalise_params['normalisation_mu_a']['min']]),
             )
             normalise_fluence = DatasetMaxMinNormalise(
                 torch.Tensor([normalise_params['normalisation_Phi']['max']]),
-                torch.Tensor([normalise_params['normalisation_Phi']['min']])
+                torch.Tensor([normalise_params['normalisation_Phi']['min']]),
             )
             
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
                 torch.Tensor([normalise_params['normalisation_X']['mean']]),
-                torch.Tensor([normalise_params['normalisation_X']['std']])
+                torch.Tensor([normalise_params['normalisation_X']['std']]),
+                sigma_data=args.std_data,
             )
             normalise_mu_a = DatasetMeanStdNormalise(
                 torch.Tensor([normalise_params['normalisation_mu_a']['mean']]),
-                torch.Tensor([normalise_params['normalisation_mu_a']['std']])
+                torch.Tensor([normalise_params['normalisation_mu_a']['std']]),
+                sigma_data=args.std_data,
             )
             normalise_fluence = DatasetMeanStdNormalise(
                 torch.Tensor([normalise_params['normalisation_Phi']['mean']]),
-                torch.Tensor([normalise_params['normalisation_Phi']['std']])
+                torch.Tensor([normalise_params['normalisation_Phi']['std']]),
+                sigma_data=args.std_data,
             )
     x_transform = transforms.Compose([
         ReplaceNaNWithZero(),
@@ -231,7 +273,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
+            project='MSOT_EDM2', name=f'{model_name}_fold{args.fold}', 
             save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     

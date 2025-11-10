@@ -11,10 +11,16 @@ import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
 
+from edm2.training.networks_edm2 import Precond
+from edm2.training.training_loop import EDM2Loss
+from edm2.training.training_loop import learning_rate_schedule
+from edm2.training.phema import PowerFunctionEMA
+from edm2.generate_images import edm_sampler
+
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
-from epoch_steps import val_epoch, test_epoch
+from epoch_steps import *
 from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
 from nn_modules.DiT import DiT
 from nn_modules.swin_unet import SwinTransformerSys
@@ -25,43 +31,13 @@ from nn_modules.swin_unet import SwinTransformerSys
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--synthetic_or_experimental', choices=['experimental', 'synthetic', 'both'], default='synthetic', help='whether to use synthetic or experimental data')
-    parser.add_argument('--experimental_root_dir', type=str, default='/mnt/e/Dataset_for_Moving_beyond_simulation_data_driven_quantitative_photoacoustic_imaging_using_tissue_mimicking_phantoms/', help='path to the root directory of the experimental dataset.')
-    parser.add_argument('--synthetic_root_dir', type=str, default='/home/wv00017/MSOT_Diffusion/20250327_ImageNet_MSOT_Dataset/', help='path to the root directory of the synthetic dataset')
-    parser.add_argument('--git_hash', type=str, default='None', help='optional, git hash of the current commit for reproducibility')
-    parser.add_argument('--epochs', type=int, default=200, help='number of training epochs, set to zero or one to test code')
-    parser.add_argument('--train_batch_size', type=int, default=16, help='batch size for training')
-    parser.add_argument('--val_batch_size', type=int, default=64, help='batch size for inference, 4x train_batch_size should have similar device memory requirements')
-    parser.add_argument('--image_size', type=int, default=256, help='image size')
-    parser.add_argument('--save_test_examples', help='save test examples to save_dir and wandb', action='store_true', default=False)
-    parser.add_argument('--wandb_log', help='use wandb logging', action='store_true', default=False)
-    parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--seed', type=int, default=None, help='seed for reproducibility')
-    parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
-    parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
-    parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
-    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'Swin_UNet', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'DDIM', 'DiT'], default='UNet_e2eQPAT', help='model to train')
-    parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
-    parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
-    parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
-    parser.add_argument('--predict_fluence', default=False, help='predict fluence as well as mu_a', action='store_true')
-    parser.add_argument('--no_lr_scheduler', default=False, help='do not use lr scheduler', action='store_true')
-    parser.add_argument('--freeze_encoder', default=False, help='freeze the encoder', action='store_true')
-    parser.add_argument('--objective', choices=['pred_v', 'pred_noise'], default='pred_v', help='DDIM only, objective of the diffusion model')
-    parser.add_argument('--self_condition', default=False, help='DDIM only, condition on the previous timestep', action='store_true')
-    parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
-    
-    args = parser.parse_args()
-    var_args = vars(args)
-    logging.info(f'args dict: {var_args}')
-
     torch.set_float32_matmul_precision('high')
     torch.use_deterministic_algorithms(False)
     logging.info(f'cuDNN deterministic: {torch.torch.backends.cudnn.deterministic}')
     logging.info(f'cuDNN benchmark: {torch.torch.backends.cudnn.benchmark}')
     
+    args, var_args = uf.get_config()
+
     if args.seed:
         seed = args.seed
     else:
@@ -73,6 +49,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
         
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #device = torch.device('cpu')
     if not torch.cuda.is_available():
         raise ValueError('cuda is not available')
     logging.info(f'using device: {device}')
@@ -127,7 +104,6 @@ if __name__ == '__main__':
             )
             uf.remove_softmax(model)
         case 'DDIM':
-            out_channels = channels * 2 if args.predict_fluence else channels
             model = ddp.Unet(
                 dim=32, channels=out_channels, out_dim=out_channels,
                 self_condition=args.self_condition, image_condition=True, 
@@ -145,7 +121,6 @@ if __name__ == '__main__':
                 sampling_timesteps=100, objective=args.objective, auto_normalize=False,
             )
         case 'DiT':
-            out_channels = channels * 2 if args.predict_fluence else channels
             # parameters depth=12, hidden_size=384, and num_heads=6 are the same as DiT-S/8.
             # with an image size of 256 and patch size of 16, we have the 
             # same number of patches as ViT from an image is worth 16x16 words
@@ -163,8 +138,38 @@ if __name__ == '__main__':
                 model, image_size=image_size, timesteps=1000,
                 sampling_timesteps=100, objective=args.objective, auto_normalize=False,
             )
-            
-    
+        case 'EDM2':
+            attn_resolutions = [16, 8] if args.attention else []
+            in_channels = out_channels+1 # plus 1 for conditional information
+            loss_fn = EDM2Loss(P_mean=-0.8, P_std=1.6, sigma_data=0.5)
+            model = Precond(
+                img_resolution=image_size[0], img_channels_in=in_channels, img_channels_out=out_channels,
+                label_dim=1000, model_channels=64, attn_resolutions=attn_resolutions, 
+                use_fp16=False, sigma_data=0.5
+            )
+            # label_dim:
+            #    > labels are one-hot encoded classes (1000 classes in ImageNet)
+            #    > wavelength can be used for conditioning instead of class labels
+            #    > wavelength should be passed to the Precond model as a size (batch_size, n_wavelengths)
+            # - Work out what to use for sigma_data
+            #    > sigma is used to comput the time embedding instead of timestep t
+            # - Work out what model_channels does, and whether 192 is appropriate
+            #    > Base multiplier for the number of channels.
+            #    > keep as is for now.
+            # - Learning rate scheduler parameters are heavily dependent heavily on the network capacity and dataset
+            #   > For now the schedular is ommited
+            #scheduler = learning_rate_schedule(
+            #    cur_nimg=0, 
+            #    batch_size=args.train_batch_size,
+            #    ref_lr=100e-4,
+            #    ref_batches=70e3, 
+            #    rampup_Mimg=10
+            #)
+
+            # TEST:
+            # - with and without attention heads
+
+
     if args.load_checkpoint_dir:
         model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
         logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
@@ -190,9 +195,14 @@ if __name__ == '__main__':
         diffusion.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
-    optimizer = torch.optim.Adam(
-        model.parameters(), lr=args.lr, eps=1e-8, amsgrad=True
-    )
+    if args.model not in ['EDM2']:
+        optimizer = torch.optim.Adam(
+            model.parameters(), lr=args.lr, eps=1e-8, amsgrad=True
+        )
+    else:
+        ema = PowerFunctionEMA(model, stds=[0.05, 0.1])
+        optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99))
+
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, verbose=True, patience=10, factor=0.9
     )
@@ -213,6 +223,8 @@ if __name__ == '__main__':
             train_loader = dataloaders['experimental']['train']
         case 'both':
             train_loader = dataloaders['combined']['train']
+    
+    cur_nimg = 0 # needed for EDM2 lr scheduler and EMA update
     for epoch in range(args.epochs):
         # ==================== Train epoch ====================
         model.train()
@@ -247,6 +259,21 @@ if __name__ == '__main__':
                             x_cond=X, 
                             wavelength_cond=wavelength_nm.squeeze()
                         )
+                case 'EDM2':
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    if args.predict_fluence:
+                        loss = loss_fn(
+                            model, torch.cat((mu_a, fluence), dim=1), 
+                            x_cond=X, labels=wavelength_nm_onehot
+                        )
+                    else:
+                        loss = loss_fn(
+                            model, mu_a, 
+                            x_cond=X, labels=wavelength_nm_onehot
+                        )
 
             match args.model:
                 case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'Swin_UNet':
@@ -258,7 +285,7 @@ if __name__ == '__main__':
                         loss = mu_a_loss + fluence_loss
                     else:
                         loss = mu_a_loss
-                case 'DDIM' | 'DiT':
+                case 'DDIM' | 'DiT' | 'EDM2':
                     mu_a_loss = loss[:, 0:1].mean()
                     if args.predict_fluence:
                         fluence_loss = loss[:, 1:2].mean()
@@ -268,8 +295,24 @@ if __name__ == '__main__':
                         
             total_train_loss += loss.item()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            #nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            if args.model == 'EDM2':
+                lr = learning_rate_schedule(
+                    cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=0.01, ref_batches=70000, rampup_Mimg=0.1
+                )
+                for g in optimizer.param_groups:
+                    g['lr'] = lr
+                for param in model.parameters():
+                    if param.grad is not None:
+                        torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
+            
             optimizer.step()
+
+            if args.model == 'EDM2':
+                # Update EMA and training state.
+                cur_nimg += X.shape[0]
+                ema.update(cur_nimg=cur_nimg, batch_size=X.shape[0])
+
             if args.warmup_period > 1:
                 with warmup_scheduler.dampening(): # step warmup schedulers
                     pass
@@ -281,12 +324,18 @@ if __name__ == '__main__':
         logging.info(f'train_epoch: {epoch}, mean_train_loss: {total_train_loss/len(train_loader)}')
         
         # ==================== Validation epoch ====================
-        # only validate every 10 epochs for DDIM, due to the long sampling time
-        if (args.model not in ['DDIM', 'DiT']) or ((epoch+1) % 10 == 0):
+        # only validate every 10 epochs for diffusion, due to the long sampling time
+        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+10) % 1 == 0):
             model.eval()
             if args.model in ['DDIM', 'DiT']:
-                diffusion.eval()
-            module = diffusion if args.model in ['DDIM', 'DiT'] else model
+                module = diffusion.eval()
+            elif args.model in ['EDM2']:
+                save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
+                module = reconstruct_edm2_phema_from_dir(args.save_dir, [args.phema_reconstruction_std])[0]['net']
+                module.to(device).float()
+            else:
+                module = model
+
             if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
                 experimental_val_loss = test_epoch(
                     args, module, dataloaders['experimental']['val'], 
@@ -297,7 +346,7 @@ if __name__ == '__main__':
                     wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
                 if args.save_dir:
                     # priority is given to the validation loss of the experimental data
-                    checkpointer(model, epoch, experimental_val_loss)
+                    checkpointer(module, epoch, experimental_val_loss)
                 if not args.no_lr_scheduler:
                     scheduler.step(experimental_val_loss)
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
@@ -310,13 +359,13 @@ if __name__ == '__main__':
                     wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
-                    checkpointer(model, epoch, synthetic_val_loss)
+                    checkpointer(module, epoch, synthetic_val_loss)
                 if not args.no_lr_scheduler:
                     scheduler.step(synthetic_val_loss)
                 
-        logging.info(f'lr: {scheduler.get_last_lr()[0]}')
+        logging.info(f'lr: {optimizer.param_groups[0]['lr']}')
         if args.wandb_log:
-            wandb.log({'lr' : scheduler.get_last_lr()[0],
+            wandb.log({'lr' : optimizer.param_groups[0]['lr'],
                        'mean_train_loss' : total_train_loss/len(train_loader)})
         
     
@@ -325,8 +374,13 @@ if __name__ == '__main__':
     checkpointer.load_best_model(model)
     model.eval()
     if args.model in ['DDIM', 'DiT']:
-        diffusion.eval()
-    module = diffusion if args.model in ['DDIM', 'DiT'] else model
+        module = diffusion.eval()
+    elif args.model in ['EDM2']:
+        save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
+        module = reconstruct_edm2_phema_from_dir(args.save_dir, [args.phema_reconstruction_std])[0]['net']
+        module.to(device).float()
+    else:
+        module = model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
         experimental_test_loss = test_epoch(
             args, module, dataloaders['experimental']['test'], 
@@ -373,6 +427,17 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
                 case 'DDIM' | 'DiT':
                     Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+                case 'EDM2':
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    channels = 2 if args.predict_fluence else 1
+                    noise = torch.randn(
+                        (X.shape[0], channels, args.image_size, args.image_size),
+                        device=device
+                    )
+                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
             mu_a_hat = Y_hat[:, 0:1]
             mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
             best_checkpoint_train_mu_a_loss += mu_a_loss.item()
@@ -412,6 +477,17 @@ if __name__ == '__main__':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
                 case 'DDIM' | 'DiT':
                     Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+                case 'EDM2':
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    channels = 2 if args.predict_fluence else 1
+                    noise = torch.randn(
+                        (X.shape[0], channels, args.image_size, args.image_size),
+                        device=device
+                    )
+                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
         mu_a_hat = Y_hat[:, 0:1]
         if args.predict_fluence:
             fluence_hat = Y_hat[:, 1:2]
