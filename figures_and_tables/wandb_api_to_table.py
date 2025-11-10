@@ -35,11 +35,6 @@ def get_metrics_dict(df : pd.DataFrame, models : list, metrics_dict : dict, conv
                 metric_values = metric_values * 1e-2
             # calculate mean and std for each metric
             models_dict[model][metric] = [np.mean(metric_values), np.std(metric_values)]
-            #try:
-            #    models_dict[model][metric] = [np.mean(metric_values), np.std(metric_values)]
-            #except Exception as e:
-            #    print(e)
-            #    breakpoint()
     return models_dict
 
 def print_single_tex_reslts_table(models_dict : dict, caption : str,
