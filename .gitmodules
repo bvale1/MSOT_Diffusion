@@ -5,7 +5,3 @@
 	path = denoising-diffusion-pytorch
 	url = https://github.com/bvale1/denoising-diffusion-pytorch.git
 	branch = image_conditional
-[submodule "edm2"]
-	path = edm2
-	url = git@github.com:bvale1/edm2.git
-	branch = image_conditional

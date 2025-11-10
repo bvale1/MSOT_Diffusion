@@ -63,12 +63,9 @@ class InstanceMeanStdNormalise(object):
     
     
 class DatasetMeanStdNormalise(object):
-    # standardise to dataset mean=0, std=std (standard normal distribution)
-    def __init__(
-            self, mean : Union[torch.Tensor, np.ndarray, float, int], 
-            std : Union[torch.Tensor, np.ndarray, float, int],
-            sigma_data : Union[torch.Tensor, np.ndarray, float, int]=1.0,
-        ) -> None:
+    # standardise to dataset mean=0, std=1 (standard normal distribution)
+    def __init__(self, mean : Union[torch.Tensor, np.ndarray, float, int], 
+                 std : Union[torch.Tensor, np.ndarray, float, int]) -> None:
         if isinstance(mean, float) or isinstance(mean, int):
             mean = torch.Tensor([mean])
         elif isinstance(mean, np.ndarray):
@@ -77,20 +74,17 @@ class DatasetMeanStdNormalise(object):
             std = torch.Tensor([std])
         elif isinstance(std, np.ndarray):
             std = torch.from_numpy(std)
-        if isinstance(sigma_data, float) or isinstance(sigma_data, int):
-            sigma_data = torch.Tensor([sigma_data])
         # mean and std may be of shape (C, 1, 1), so each channel may
         # be normalised separately
         self.mean = mean.view(-1, 1, 1)
         self.std = std.view(-1, 1, 1)
-        self.sigma_data = sigma_data.view(-1, 1, 1)
-
+        
     def __call__(self, tensor : torch.Tensor) -> torch.Tensor:
-        return (tensor - self.mean) * self.sigma_data / self.std
+        return (tensor - self.mean) / self.std
     
     def inverse(self, tensor : torch.Tensor) -> torch.Tensor:
         # use to convert back to original scale
-        return (tensor * self.std / self.sigma_data) + self.mean
+        return (tensor * self.std) + self.mean
 
 
 class DatasetMaxMinNormalise(object):

@@ -8,61 +8,15 @@ import timeit
 import os
 import argparse as arpgparse
 import utility_classes as uc
-import edm2.dnnlib as dnnlib
-import pickle
-import copy
 from typing import Literal
-from typing import Iterable
-
-from edm2.training.phema import PowerFunctionEMA
-from edm2.training.training_loop import EDM2Loss
-from edm2.reconstruct_phema import reconstruct_phema
-from edm2.reconstruct_phema import list_input_pickles
-from edm2.generate_images import edm_sampler
-
-def save_ema_pickles(
-        ema : PowerFunctionEMA, 
-        cur_nimg : float, 
-        loss_fn : EDM2Loss, 
-        save_dir : str,
-    ) -> None:
-    # Save network snapshot.
-    ema_list = ema.get()
-    ema_list = ema_list if isinstance(ema_list, list) else [(ema_list, '')]
-    for ema_net, ema_suffix in ema_list:
-        data = dnnlib.EasyDict(loss_fn=loss_fn)
-        data.ema = copy.deepcopy(ema_net).cpu().eval().requires_grad_(False).to(torch.float16)
-        fname = f'network-snapshot-{cur_nimg:08d}{ema_suffix}.pkl'
-        print(f'Saving {fname} ... ', end='', flush=True)
-        with open(os.path.join(save_dir, fname), 'wb') as f:
-            pickle.dump(data, f)
-        print('done')
-        del data # conserve memory
 
 
-def reconstruct_edm2_phema_from_dir(
-        save_dir : str, out_std : list[float], save_reconstructions : bool = False
-    ) -> Iterable[dnnlib.EasyDict]:
-    pkls = list_input_pickles(save_dir)
-    reconstructions = []
-    if save_reconstructions:
-        reconstruction_iterable = reconstruct_phema(in_pkls=pkls, out_std=out_std, out_dir=save_dir)
-    else:
-        reconstruction_iterable = reconstruct_phema(in_pkls=pkls, out_std=out_std, out_dir=None)
-    for iteration in reconstruction_iterable:
-        if iteration.out:
-            reconstructions.extend(iteration['out'])
-    return reconstructions
-
-
-def val_epoch(
-    args : arpgparse.Namespace,
-    module : nn.Module,
-    dataloader : DataLoader,
-    epoch : int, 
-    device : torch.device,
-    logging_prefix : str
-) -> float:
+def val_epoch(args : arpgparse.Namespace,
+              module : nn.Module,
+              dataloader : DataLoader,
+              epoch : int, 
+              device : torch.device,
+              logging_prefix : str) -> float:
     total_val_loss = 0
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
@@ -84,17 +38,6 @@ def val_epoch(
                         x_cond=X,
                         wavelength_cond=wavelength_nm.squeeze()
                     )
-                case 'EDM2':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    channels = 2 if args.predict_fluence else 1
-                    noise = torch.randn(
-                        (X.shape[0], channels, args.image_size, args.image_size),
-                        device=device
-                    )
-                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
 
             mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
@@ -148,17 +91,6 @@ def test_epoch(args : arpgparse.Namespace,
                         x_cond=X,
                         wavelength_cond=wavelength_nm.squeeze()
                     )
-                case 'EDM2':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    channels = 2 if args.predict_fluence else 1
-                    noise = torch.randn(
-                        (X.shape[0], channels, args.image_size, args.image_size),
-                        device=device
-                    )
-                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
 
             mu_a_hat = Y_hat[:, 0:1]            
             mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')            
