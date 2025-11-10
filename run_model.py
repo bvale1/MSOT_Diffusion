@@ -325,13 +325,14 @@ if __name__ == '__main__':
         
         # ==================== Validation epoch ====================
         # only validate every 10 epochs for diffusion, due to the long sampling time
-        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+10) % 1 == 0):
+        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+1) % 10 == 0):
             model.eval()
             if args.model in ['DDIM', 'DiT']:
                 module = diffusion.eval()
             elif args.model in ['EDM2']:
                 save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
-                module = reconstruct_edm2_phema_from_dir(args.save_dir, [args.phema_reconstruction_std])[0]['net']
+                module = reconstruct_edm2_phema_from_dir(
+                    args.save_dir, [args.phema_reconstruction_std], delete_pkls=True)[0]['net']
                 module.to(device).float()
             else:
                 module = model

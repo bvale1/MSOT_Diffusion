@@ -41,7 +41,9 @@ def save_ema_pickles(
 
 
 def reconstruct_edm2_phema_from_dir(
-        save_dir : str, out_std : list[float], save_reconstructions : bool = False
+        save_dir : str, out_std : list[float],
+        save_reconstructions : bool = False, 
+        delete_pkls : bool = False,
     ) -> Iterable[dnnlib.EasyDict]:
     pkls = list_input_pickles(save_dir)
     reconstructions = []
@@ -52,6 +54,9 @@ def reconstruct_edm2_phema_from_dir(
     for iteration in reconstruction_iterable:
         if iteration.out:
             reconstructions.extend(iteration['out'])
+    if delete_pkls:
+        for pkl in pkls:
+            os.remove(pkl.path)
     return reconstructions
 
 
