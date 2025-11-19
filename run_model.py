@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
-import peft
+#import peft
 
 from edm2.training.networks_edm2 import Precond
 from edm2.training.training_loop import EDM2Loss
@@ -185,12 +185,12 @@ if __name__ == '__main__':
             for param in model.downs.parameters():
                 param.requires_grad = False
 
-    if args.lora_rank > 0:
-        peft_config = peft.LoraConfig(
-            r=args.lora_rank,
-            lora_alpha=32
-        )
-        model = peft.get_peft_model(model, peft_config)
+    # if args.lora_rank > 0:
+    #     peft_config = peft.LoraConfig(
+    #         r=args.lora_rank,
+    #         lora_alpha=32
+    #     )
+    #     model = peft.get_peft_model(model, peft_config)
 
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
