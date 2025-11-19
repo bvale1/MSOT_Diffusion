@@ -1,4 +1,3 @@
-import argparse
 import wandb
 import logging 
 import torch
@@ -10,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
+import peft
 
 from edm2.training.networks_edm2 import Precond
 from edm2.training.training_loop import EDM2Loss
@@ -143,7 +143,7 @@ if __name__ == '__main__':
             in_channels = out_channels+1 # plus 1 for conditional information
             loss_fn = EDM2Loss(P_mean=-0.8, P_std=1.6, sigma_data=0.5)
             model = Precond(
-                img_resolution=image_size[0], img_channels_in=in_channels, img_channels_out=out_channels,
+                img_resolution=256, img_channels_in=in_channels, img_channels_out=out_channels,
                 label_dim=1000, model_channels=64, attn_resolutions=attn_resolutions, 
                 use_fp16=False, sigma_data=0.5
             )
@@ -184,6 +184,13 @@ if __name__ == '__main__':
                 param.requires_grad = False
             for param in model.downs.parameters():
                 param.requires_grad = False
+
+    if args.lora_rank > 0:
+        peft_config = peft.LoraConfig(
+            r=args.lora_rank,
+            lora_alpha=32
+        )
+        model = peft.get_peft_model(model, peft_config)
 
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
@@ -338,7 +345,7 @@ if __name__ == '__main__':
                 module = model
 
             if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
-                experimental_val_loss = test_epoch(
+                experimental_val_loss, _, _ = test_epoch(
                     args, module, dataloaders['experimental']['val'], 
                     epoch, device, transforms_dict['experimental'],
                     'experimental_val'
@@ -351,7 +358,7 @@ if __name__ == '__main__':
                 if not args.no_lr_scheduler:
                     scheduler.step(experimental_val_loss)
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
-                synthetic_val_loss = test_epoch(
+                synthetic_val_loss, _, _ = test_epoch(
                     args, module, dataloaders['synthetic']['val'], 
                     epoch, device, transforms_dict['synthetic'],
                     'synthetic_val'
@@ -383,13 +390,13 @@ if __name__ == '__main__':
     else:
         module = model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
-        experimental_test_loss = test_epoch(
+        experimental_test_loss, _, _ = test_epoch(
             args, module, dataloaders['experimental']['test'], 
             'experimental', device, transforms_dict['experimental'], 
             'experimental_test'
         )
     if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':
-        synthetic_test_loss = test_epoch(
+        synthetic_test_loss, _, _ = test_epoch(
             args, module, dataloaders['synthetic']['test'], 
             'synthetic', device, transforms_dict['synthetic'], 
             'synthetic_test'

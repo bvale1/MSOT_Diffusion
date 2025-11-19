@@ -60,68 +60,6 @@ def reconstruct_edm2_phema_from_dir(
     return reconstructions
 
 
-def val_epoch(
-    args : arpgparse.Namespace,
-    module : nn.Module,
-    dataloader : DataLoader,
-    epoch : int, 
-    device : torch.device,
-    logging_prefix : str
-) -> float:
-    total_val_loss = 0
-    with torch.no_grad():
-        for i, batch in enumerate(dataloader):
-            X = batch[0].to(device); mu_a = batch[1].to(device); 
-            fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
-
-            match args.model:
-                case 'UNet_e2eQPAT' | 'Swin_UNet':
-                    Y_hat = module(X)
-                case 'UNet_wl_pos_emb':
-                    Y_hat = module(X, wavelength_nm.squeeze())
-                case 'UNet_diffusion_ablation':
-                    Y_hat = module(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM':
-                    Y_hat = module.sample(batch_size=X.shape[0], x_cond=X)
-                case 'DiT':
-                    Y_hat = module.sample(
-                        batch_size=X.shape[0], 
-                        x_cond=X,
-                        wavelength_cond=wavelength_nm.squeeze()
-                    )
-                case 'EDM2':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    channels = 2 if args.predict_fluence else 1
-                    noise = torch.randn(
-                        (X.shape[0], channels, args.image_size, args.image_size),
-                        device=device
-                    )
-                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
-
-            mu_a_hat = Y_hat[:, 0:1]            
-            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
-            if args.predict_fluence:
-                fluence_hat = Y_hat[:, 1:2]
-                fluence_loss = F.mse_loss(fluence_hat, fluence, reduction='mean')
-                loss = mu_a_loss + fluence_loss
-            else:
-                loss = mu_a_loss
-            total_val_loss += loss.item()
-            if args.wandb_log:
-                wandb.log({f'{logging_prefix}_tot_loss' : loss.item(),
-                           f'{logging_prefix}_mu_a_loss' : mu_a_loss.item()})
-                if args.predict_fluence:
-                    wandb.log({f'{logging_prefix}_fluence_loss' : fluence_loss.item()})
-    
-    total_val_loss /= len(dataloader)
-    logging.info(f'{logging_prefix}_epoch: {epoch}, mean_{logging_prefix}_loss: {total_val_loss}')
-
-    return total_val_loss
-
-
 def test_epoch(args : arpgparse.Namespace,
                module : nn.Module,
                dataloader : DataLoader,
@@ -216,4 +154,4 @@ def test_epoch(args : arpgparse.Namespace,
         wandb.log({f'{logging_prefix}_time' : total_test_time,
                    f'{logging_prefix}_time_per_batch' : total_test_time/len(dataloader)})
         
-    return total_test_loss
+    return total_test_loss, bg_test_metric_calculator, inclusion_test_metric_calculator

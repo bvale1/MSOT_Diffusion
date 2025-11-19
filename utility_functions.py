@@ -43,6 +43,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
     parser.add_argument('--std_data', type=float, default=0.5, help='standard normalisation only, expected std of the data after normalisation')
     parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
+    parser.add_argument('--lora_rank', type=int, default=0, help='rank for LoRA layers, 0 means no LoRA')
 
     args = parser.parse_args()
     var_args = vars(args)
