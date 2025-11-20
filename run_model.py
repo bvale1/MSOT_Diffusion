@@ -140,11 +140,12 @@ if __name__ == '__main__':
             )
         case 'EDM2':
             attn_resolutions = [16, 8] if args.attention else []
+            label_dim = 1000 if args.wl_conditioning else 0
             in_channels = out_channels+1 # plus 1 for conditional information
             loss_fn = EDM2Loss(P_mean=-0.8, P_std=1.6, sigma_data=0.5)
             model = Precond(
                 img_resolution=256, img_channels_in=in_channels, img_channels_out=out_channels,
-                label_dim=1000, model_channels=64, attn_resolutions=attn_resolutions, 
+                label_dim=label_dim, model_channels=64, attn_resolutions=attn_resolutions, 
                 use_fp16=False, sigma_data=0.5
             )
             #if not args.attention:
