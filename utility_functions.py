@@ -44,6 +44,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--std_data', type=float, default=0.5, help='standard normalisation only, expected std of the data after normalisation')
     parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
     parser.add_argument('--lora_rank', type=int, default=0, help='rank for LoRA layers, 0 means no LoRA')
+    parser.add_argument('--wl_conditioning', default=False, help='use wavelength conditioning in diffusion models', action='store_true')
 
     args = parser.parse_args()
     var_args = vars(args)
@@ -107,6 +108,16 @@ def remove_batchnorm(module : nn.Module) -> None:
             setattr(module, name, torch.nn.Identity())
         elif hasattr(m, 'children'):
             remove_batchnorm(m)
+
+def remove_attention(module : nn.Module) -> None:
+    '''
+    Remove all Attention layers from a model.
+    '''
+    for name, m in module.named_children():
+        if isinstance(m, torch.nn.MultiheadAttention):
+            setattr(module, name, torch.nn.Identity())
+        elif hasattr(m, 'children'):
+            remove_attention(m)
             
 
 def replace_batchnorm_with_groupnorm(module : nn.Module, ch_per_group : int=16) -> None:

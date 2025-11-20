@@ -147,6 +147,8 @@ if __name__ == '__main__':
                 label_dim=1000, model_channels=64, attn_resolutions=attn_resolutions, 
                 use_fp16=False, sigma_data=0.5
             )
+            if not args.attention:
+                
             # label_dim:
             #    > labels are one-hot encoded classes (1000 classes in ImageNet)
             #    > wavelength can be used for conditioning instead of class labels
@@ -346,9 +348,10 @@ if __name__ == '__main__':
 
             if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
                 experimental_val_loss, _, _ = test_epoch(
-                    args, module, dataloaders['experimental']['val'], 
-                    epoch, device, transforms_dict['experimental'],
-                    'experimental_val'
+                    args=args, module=module, dataloader=dataloaders['experimental']['val'], 
+                    synthetic_or_experimental='experimental', device=device,
+                    transforms_dict=transforms_dict['experimental'],
+                    logging_prefix='experimental_val'
                 )
                 if args.wandb_log:
                     wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
@@ -357,14 +360,17 @@ if __name__ == '__main__':
                     checkpointer(module, epoch, experimental_val_loss)
                 if not args.no_lr_scheduler:
                     scheduler.step(experimental_val_loss)
+
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
                 synthetic_val_loss, _, _ = test_epoch(
-                    args, module, dataloaders['synthetic']['val'], 
-                    epoch, device, transforms_dict['synthetic'],
-                    'synthetic_val'
+                    args=args, module=module, dataloader=dataloaders['synthetic']['val'], 
+                    synthetic_or_experimental='synthetic', device=device,
+                    transforms_dict=transforms_dict['synthetic'],
+                    logging_prefix='synthetic_val'
                 )
                 if args.wandb_log:
                     wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
+
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
                     checkpointer(module, epoch, synthetic_val_loss)
@@ -391,15 +397,17 @@ if __name__ == '__main__':
         module = model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
         experimental_test_loss, _, _ = test_epoch(
-            args, module, dataloaders['experimental']['test'], 
-            'experimental', device, transforms_dict['experimental'], 
-            'experimental_test'
+            args=args, module=module, dataloader=dataloaders['experimental']['test'], 
+            synthetic_or_experimental='experimental', device=device, 
+            transforms_dict=transforms_dict['experimental'], 
+            logging_prefix='experimental_test'
         )
     if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':
         synthetic_test_loss, _, _ = test_epoch(
-            args, module, dataloaders['synthetic']['test'], 
-            'synthetic', device, transforms_dict['synthetic'], 
-            'synthetic_test'
+            args=args, module=module, dataloader=dataloaders['synthetic']['test'], 
+            synthetic_or_experimental='synthetic', device=device, 
+            transforms_dict=transforms_dict['synthetic'], 
+            logging_prefix='synthetic_test'
         )
     
     if args.save_dir and args.epochs > 0:

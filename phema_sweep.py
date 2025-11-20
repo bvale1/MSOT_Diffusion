@@ -29,9 +29,10 @@ def evaluate_phema_sweep(modules, args_namespace, var_args, dataloaders, transfo
         module = module['net'].to(device).float()
         if var_args['synthetic_or_experimental'] == 'experimental':
             _, bg_metric_calculator, inclusion_metric_calculator = test_epoch(
-                args_namespace, module, dataloaders['experimental']['val'], 
-                var_args['epochs'], device, transforms_dict['experimental'],
-                'experimental_val'
+                args=args_namespace, module=module, dataloader=dataloaders['experimental']['val'], 
+                synthetic_or_experimental='experimental', device=device, 
+                transforms_dict=transforms_dict['experimental'],
+                logging_prefix='experimental_val'
             )
             inclusion_metrics = inclusion_metric_calculator.get_metrics()
             inclusion_RMSEs.append(inclusion_metrics['mean_RMSE'])
@@ -40,9 +41,10 @@ def evaluate_phema_sweep(modules, args_namespace, var_args, dataloaders, transfo
 
         elif var_args['synthetic_or_experimental'] == 'synthetic':          
             _, bg_metric_calculator, _ = test_epoch(
-                args_namespace, module, dataloaders['synthetic']['val'], 
-                var_args['epochs'], device, transforms_dict['synthetic'],
-                'synthetic_val'
+                args=args_namespace, module=module, dataloader=dataloaders['synthetic']['val'],
+                synthetic_or_experimental='synthetic', device=device, 
+                transforms_dict=transforms_dict['synthetic'],
+                logging_prefix='synthetic_val'
             )
 
         bg_metrics = bg_metric_calculator.get_metrics()
