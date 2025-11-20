@@ -109,12 +109,17 @@ def remove_batchnorm(module : nn.Module) -> None:
         elif hasattr(m, 'children'):
             remove_batchnorm(m)
 
+
 def remove_attention(module : nn.Module) -> None:
     '''
     Remove all Attention layers from a model.
     '''
     for name, m in module.named_children():
+        # normal pytorch attention layer
         if isinstance(m, torch.nn.MultiheadAttention):
+            setattr(module, name, torch.nn.Identity())
+        # EDM2 UNet attention layers
+        elif 'attn' in name: 
             setattr(module, name, torch.nn.Identity())
         elif hasattr(m, 'children'):
             remove_attention(m)
