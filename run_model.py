@@ -147,7 +147,7 @@ if __name__ == '__main__':
                 label_dim=1000, model_channels=64, attn_resolutions=attn_resolutions, 
                 use_fp16=False, sigma_data=0.5
             )
-            if not args.attention:
+            #if not args.attention:
                 
             # label_dim:
             #    > labels are one-hot encoded classes (1000 classes in ImageNet)
