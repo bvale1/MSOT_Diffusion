@@ -174,7 +174,9 @@ if __name__ == '__main__':
 
 
     if args.load_checkpoint_dir:
-        model.load_state_dict(torch.load(args.load_checkpoint_dir, weights_only=True))
+        model.load_state_dict(
+            torch.load(args.load_checkpoint_dir, weights_only=True), strict=False
+        )
         logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
     
     if args.freeze_encoder:
