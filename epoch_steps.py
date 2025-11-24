@@ -14,6 +14,9 @@ import copy
 from typing import Literal
 from typing import Iterable
 
+import utility_functions as uf
+from utility_classes import ReconstructAbsorbtionDataset
+
 from edm2.training.phema import PowerFunctionEMA
 from edm2.training.training_loop import EDM2Loss
 from edm2.reconstruct_phema import reconstruct_phema
@@ -66,7 +69,10 @@ def test_epoch(args : arpgparse.Namespace,
                synthetic_or_experimental : Literal['synthetic', 'experimental'],
                device : torch.device,
                transforms_dict : dict[str, callable],
-               logging_prefix : str) -> None:
+               logging_prefix : str,
+               num_steps : int = 32,
+               plot_all_reconstructions : bool = False,
+               dataset : ReconstructAbsorbtionDataset = None) -> None:
     total_test_loss = 0
     bg_test_metric_calculator = uc.TestMetricCalculator()
     inclusion_test_metric_calculator = uc.TestMetricCalculator()
@@ -75,6 +81,7 @@ def test_epoch(args : arpgparse.Namespace,
         for i, batch in enumerate(dataloader):
             X = batch[0].to(device); mu_a = batch[1].to(device); 
             fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
+            files = batch[6]  # added for saving test examples
 
             match args.model:
                 case 'UNet_e2eQPAT' | 'Swin_UNet':
@@ -101,10 +108,23 @@ def test_epoch(args : arpgparse.Namespace,
                         (X.shape[0], channels, args.image_size, args.image_size),
                         device=device
                     )
-                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
+                    Y_hat = edm_sampler(
+                        module, noise, x_cond=X, labels=wavelength_nm_onehot, num_steps=num_steps
+                    )
 
             mu_a_hat = Y_hat[:, 0:1]            
-            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')            
+            mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')    
+
+            if plot_all_reconstructions and args.save_dir:
+                files = ['.'.join(files.split('/')[-1].split('.')[:-1]) for files in files]
+                uf.plot_test_examples(
+                    dataset, args.save_dir, args, X, mu_a, mu_a_hat,
+                    mask=batch[5], X_transform=transforms_dict['normalise_x'], 
+                    Y_transform=transforms_dict['normalise_mu_a'],
+                    X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
+                    fig_titles=files
+                )
+
             bg_test_metric_calculator(
                 Y=mu_a, Y_hat=mu_a_hat, Y_transform=transforms_dict['normalise_mu_a'], 
                 Y_mask=batch[4] # background mask

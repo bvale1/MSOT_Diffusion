@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
-#import peft
 
 from edm2.training.networks_edm2 import Precond
 from edm2.training.training_loop import EDM2Loss
@@ -41,7 +40,7 @@ if __name__ == '__main__':
     if args.seed:
         seed = args.seed
     else:
-        seed = np.random.randint(0, 2**32 - 1)
+        seed = 42
         var_args['seed'] = seed
     logging.info(f'seed: {seed}')
     torch.manual_seed(seed) 
@@ -191,12 +190,14 @@ if __name__ == '__main__':
             for param in model.downs.parameters():
                 param.requires_grad = False
 
-    # if args.lora_rank > 0:
-    #     peft_config = peft.LoraConfig(
-    #         r=args.lora_rank,
-    #         lora_alpha=32
+    # if args.oft_rank > 0:
+    #     model = uf.orthogonal_fine_tune(
+    #         model,
+    #         r=args.oft_rank,
+    #         alpha=32
     #     )
-    #     model = peft.get_peft_model(model, peft_config)
+    # os._exit(0)
+        
 
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
@@ -473,11 +474,13 @@ if __name__ == '__main__':
     # ==================== Save test examples ====================
     if args.save_test_examples:
         model.eval()               
-        (X_0, mu_a_0, fluence0, wavelength_nm_0, mask_0) = examples_dataset[0][:5]
-        (X_1, mu_a_1, fluence1, wavelength_nm_1, mask_1) = examples_dataset[1][:5]
-        (X_2, mu_a_2, fluence2, wavelength_nm_2, mask_2) = examples_dataset[2][:5]
-        (X_3, mu_a_3, fluence3, wavelength_nm_3, mask_3) = examples_dataset[3][:5]
-        (X_4, mu_a_4, fluence5, wavelength_nm_4, mask_4) = examples_dataset[4][:5]
+        (X_0, mu_a_0, fluence0, wavelength_nm_0, mask_0, _, file_0) = examples_dataset[0][:7]
+        (X_1, mu_a_1, fluence1, wavelength_nm_1, mask_1, _, file_1) = examples_dataset[1][:7]
+        (X_2, mu_a_2, fluence2, wavelength_nm_2, mask_2, _, file_2) = examples_dataset[2][:7]
+        (X_3, mu_a_3, fluence3, wavelength_nm_3, mask_3, _, file_3) = examples_dataset[3][:7]
+        (X_4, mu_a_4, fluence5, wavelength_nm_4, mask_4, _, file_4) = examples_dataset[4][:7]
+        files = [file_0, file_1, file_2, file_3, file_4]
+        files = ['.'.join(files.split('/')[-1].split('.')[:-1]) for files in files]
         
         X = torch.stack((X_0, X_1, X_2, X_3, X_4), dim=0).to(device)
         mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, mu_a_3, mu_a_4), dim=0)
@@ -516,8 +519,7 @@ if __name__ == '__main__':
             mask=mask, X_transform=examples_transforms_dict['normalise_x'], 
             Y_transform=examples_transforms_dict['normalise_mu_a'],
             X_cbar_unit=r'Pa J$^{-1}$', Y_cbar_unit=r'cm$^{-1}$',
-            fig_titles=['test_example0', 'test_example1', 'test_example2',
-                        'test_example3', 'test_example4']
+            fig_titles=files
         )
         if args.save_dir:
             with h5py.File(os.path.join(args.save_dir, 'test_examples.h5'), 'w') as f:

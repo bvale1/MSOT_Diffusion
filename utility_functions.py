@@ -1,6 +1,5 @@
 import wandb
 import json
-import yaml
 import os
 import logging
 import argparse
@@ -43,7 +42,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
     parser.add_argument('--std_data', type=float, default=0.5, help='standard normalisation only, expected std of the data after normalisation')
     parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
-    parser.add_argument('--lora_rank', type=int, default=0, help='rank for LoRA layers, 0 means no LoRA')
+    parser.add_argument('--oft_rank', type=int, default=8, help='rank for OFT layers, 0 means no OFT')
     parser.add_argument('--wl_conditioning', default=False, help='use wavelength conditioning in diffusion models', action='store_true')
 
     args = parser.parse_args()
@@ -303,7 +302,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
         'train' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.experimental_root_dir, 'training'),
             stats=stats, fold=int(args.fold), train=True, augment=True,
-            use_all_data=False, experimental_data=True, shuffle=False,
+            use_all_data=False, experimental_data=True, shuffle=True,
             X_transform=transforms_dict['x_transform'], 
             Y_transform=transforms_dict['mu_a_transform'], 
             fluence_transform=transforms_dict['fluence_transform'],
@@ -458,3 +457,4 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
             wandb.log({fig_titles[i]: wandb.Image(fig)})
         if args.save_dir:
             fig.savefig(os.path.join(dirpath, fig_titles[i]+'.png'))
+        plt.close(fig)

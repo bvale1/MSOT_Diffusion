@@ -176,67 +176,62 @@ class ReconstructAbsorbtionDataset(Dataset):
                   -dx*X.shape[-1]/2, dx*X.shape[-1]/2]
         
         plt.rcParams.update({'font.size': 12})
-        fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+        fig, axes = plt.subplots(2, 3, figsize=(15, 10), layout='constrained')
         img = []        
         
         img.append(axes[0, 0].imshow(
             X, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,
             origin='lower', extent=extent
         ))
-        axes[0, 0].set_title('X')
+        axes[0, 0].set_title(r'Reconstruction $p_{0}^{\mathrm{rec}}$')
         
         img.append(axes[0, 1].imshow(
             Y, cmap='binary_r', vmin=v_min_Y, vmax=v_max_Y, 
             origin='lower', extent=extent
         ))
-        axes[0, 1].set_title('Y')
+        axes[0, 1].set_title(r'Reference $\mu_{\mathrm{a}}$')
         
         img.append(axes[0, 2].imshow(
             Y_hat, cmap='binary_r', vmin=v_min_Y, vmax=v_max_Y, 
             origin='lower', extent=extent
         ))
-        axes[0, 2].set_title(r'$\hat{Y}$')
+        axes[0, 2].set_title(r'Prediction $\hat{\mu_{\mathrm{a}}}$')
         
         residual = Y_hat - Y
         img.append(axes[1, 0].imshow(
             residual, cmap='RdBu', vmin=-np.max(np.abs(residual)),
             vmax=np.max(np.abs(residual)), origin='lower', extent=extent
         ))
-        axes[1, 0].set_title(r'$\hat{Y} - Y$')
+        axes[1, 0].set_title(r'Residual $\hat{\mu_{\mathrm{a}}} - \mu_{\mathrm{a}}$')
         
         cbars = []
         for i, ax in enumerate(axes.flat[:4]):
-            divider = make_axes_locatable(ax)
-            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
-            cbars.append(fig.colorbar(img[i], cax=cbar_ax, orientation='vertical'))
-            ax.set_xlabel('x (mm)')
-            ax.set_ylabel('z (mm)')
-        if X_cbar_unit:
-            cbars[0].set_label(X_cbar_unit)
-        if Y_cbar_unit:
-            cbars[1].set_label(Y_cbar_unit)
-            cbars[2].set_label(Y_cbar_unit)
-            cbars[3].set_label(Y_cbar_unit)
+            cbar_unit = X_cbar_unit if i==0 else Y_cbar_unit
+            cbars.append(fig.colorbar(img[i], ax=ax, label=cbar_unit))
+        axes[0,0].set_ylabel('z (mm)')
+        axes[1,0].set_ylabel('z (mm)')
+        axes[1,0].set_xlabel('x (mm)')
+        axes[1,1].set_xlabel('x (mm)')
                 
         Y_line_profile = Y[Y.shape[0]//2, :]
         Y_hat_line_profile = Y_hat[Y_hat.shape[0]//2, :]
         line_profile_axis = np.arange(-dx*Y.shape[-1]/2, dx*Y.shape[-1]/2, dx)
-        axes[1, 1].plot(
+        axes[1,1].plot(
             line_profile_axis, Y_line_profile, label='Y', 
             color='tab:blue', linestyle='solid'
         )
-        axes[1, 1].plot(
+        axes[1,1].plot(
             line_profile_axis, Y_hat_line_profile, label=r'$\hat{Y}$', 
             color='tab:red', linestyle='dashed'
         )
-        axes[1, 1].set_title('Line profile')
-        axes[1, 1].set_box_aspect(1)
-        axes[1, 1].set_xlabel('x (mm)')
-        axes[1, 1].set_ylabel(Y_cbar_unit)
-        axes[1, 1].grid(True)
-        axes[1, 1].set_axisbelow(True)
-        axes[1, 1].set_xlim(extent[0], extent[1])
-        axes[1, 1].legend()
+        axes[1,1].set_title('Line profile')
+        axes[1,1].set_box_aspect(1)
+        
+        axes[1,1].set_ylabel(Y_cbar_unit)
+        axes[1,1].grid(True)
+        axes[1,1].set_axisbelow(True)
+        axes[1,1].set_xlim(extent[0], extent[1])
+        axes[1,1].legend()
         
         # optional plot either X_hat or mask, priority to X_hat
         if type(X_hat) == np.ndarray:
@@ -244,7 +239,9 @@ class ReconstructAbsorbtionDataset(Dataset):
                 X_hat, cmap='binary_r', vmin=v_min_X, vmax=v_max_X,
                 origin='lower', extent=extent
             ))
-            axes[1, 2].set_title(r'$\hat{X}$')
+            axes[1, 2].set_title(r'Reconstruction $\hat{p}_{0}^{\mathrm{rec}}$')
+            cbars.append(fig.colorbar(img[-1], ax=axes[1,2], label=X_cbar_unit))
+            axes[1, 2].set_xlabel('x (mm)')
                  
         elif type(mask) == torch.Tensor:
             mask = mask.detach().cpu().squeeze().numpy()
@@ -252,17 +249,9 @@ class ReconstructAbsorbtionDataset(Dataset):
                 mask, cmap='binary_r', origin='lower', extent=extent
             ))
             axes[1, 2].set_title('Mask')
-            
-        if type(mask) == np.ndarray or type(X_hat) == np.ndarray:
-            divider = make_axes_locatable(axes[1, 2])
-            cbar_ax = divider.append_axes('right', size='5%', pad=0.05)
-            cbars.append(fig.colorbar(img[-1], cax=cbar_ax, orientation='vertical'))
+            cbars.append(fig.colorbar(img[-1], ax=axes[1,2], label=X_cbar_unit))
             axes[1, 2].set_xlabel('x (mm)')
-            axes[1, 2].set_ylabel('z (mm)')
-            if X_cbar_unit and type(X_hat) == np.ndarray:
-                cbars[-1].set_label(X_cbar_unit)   
         
-        fig.tight_layout()
         return (fig, axes)
     
     
@@ -322,7 +311,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         if self.mask_transform:
             bg_mask = self.mask_transform(bg_mask)
         
-        return (X, Y, fluence, wavelength_nm, bg_mask, torch.zeros_like(bg_mask))
+        return (X, Y, fluence, wavelength_nm, bg_mask, torch.zeros_like(bg_mask), self.samples[idx])
     
 
 class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
@@ -432,7 +421,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             bg_mask = torch.fliplr(bg_mask)
             inclusion_mask = torch.fliplr(inclusion_mask)
         
-        return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask)
+        return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask, self.files[idx // 2])
 
 
 class CombineMultipleDatasets(Dataset):
@@ -604,20 +593,110 @@ class TestMetricCalculator():
                 
     def get_metrics(self) -> dict:
         return {
-            'mean_RMSE' : np.mean(np.asarray(self.metrics['RMSE'])),
-            'std_RMSE' : np.std(np.asarray(self.metrics['RMSE'])),
-            'mean_MAE' : np.mean(np.asarray(self.metrics['MAE'])),
-            'std_MAE' : np.std(np.asarray(self.metrics['MAE'])),
-            'mean_Rel_Err' : np.mean(np.asarray(self.metrics['Rel_Err'])),
-            'std_Rel_Err' : np.std(np.asarray(self.metrics['Rel_Err'])),
-            'mean_PSNR' : np.mean(np.asarray(self.metrics['PSNR'])),
-            'std_PSNR' : np.std(np.asarray(self.metrics['PSNR'])),
-            'mean_SSIM' : np.mean(np.asarray(self.metrics['SSIM'])),
-            'std_SSIM' : np.std(np.asarray(self.metrics['SSIM'])),
-            'mean_R2' : np.mean(np.asarray(self.metrics['R2'])),
-            'std_R2' : np.std(np.asarray(self.metrics['R2']))
+            'mean_RMSE' : np.nanmean(np.asarray(self.metrics['RMSE'])),
+            'std_RMSE' : np.nanstd(np.asarray(self.metrics['RMSE'])),
+            'mean_MAE' : np.nanmean(np.asarray(self.metrics['MAE'])),
+            'std_MAE' : np.nanstd(np.asarray(self.metrics['MAE'])),
+            'mean_Rel_Err' : np.nanmean(np.asarray(self.metrics['Rel_Err'])),
+            'std_Rel_Err' : np.nanstd(np.asarray(self.metrics['Rel_Err'])),
+            'mean_PSNR' : np.nanmean(np.asarray(self.metrics['PSNR'])),
+            'std_PSNR' : np.nanstd(np.asarray(self.metrics['PSNR'])),
+            'mean_SSIM' : np.nanmean(np.asarray(self.metrics['SSIM'])),
+            'std_SSIM' : np.nanstd(np.asarray(self.metrics['SSIM'])),
+            'mean_R2' : np.nanmean(np.asarray(self.metrics['R2'])),
+            'std_R2' : np.nanstd(np.asarray(self.metrics['R2']))
         }
         
     def save_metrics_all_test_samples(self, save_path : str) -> None:
         with open(save_path, 'w') as f:
-            json.dump(self.metrics, f)
+            json.dump(self.metrics, f, indent=4)
+
+
+class LoRaFineTuneModule(nn.Module):
+    def __init__(self, 
+                 module : nn.Module,
+                 r : int=4,
+                 alpha : float=1.0,
+                 verbose : bool=True) -> nn.Module:
+        for name, param in self.module.named_parameters():
+            if verbose:
+                logging.info(f'param name: {name}, shape: {param.shape}, requires_grad: {param.requires_grad}')
+            if param.ndim == 2: # linear layer
+                d, n = param.shape
+                A = torch.zeros((r, n), device=param.device, requires_grad=True)
+                B = torch.zeros((d, r), device=param.device, requires_grad=True)
+            elif param.ndim == 4: # conv2d layer
+                # (out_channels, in_channels, kernel_h, kernel_w)
+                cout, cin, kh, kw = param.shape
+                A = torch.zeros((r, cin, kh), device=param.device, requires_grad=True)
+                B = torch.zeros((cout, kw, r), device=param.device, requires_grad=True)
+            # add LoRa parameters A and B to module
+            # initialize B with kaiming normal, A with zeros
+            nn.init.kaiming_normal_(B, mode='fan_out', nonlinearity='relu')
+            nn.init.zeros_(A)
+            module.register_parameter(f'lora_{name}_A', nn.Parameter(A))
+            module.register_parameter(f'lora_{name}_B', nn.Parameter(B))
+            self.lora_dict[name].append((B, A))
+        
+        # Update the actual module weights with LoRA adaptation
+        for name, param in self.module.named_parameters():
+            if name.startswith('lora_'):
+                continue  # Skip LoRA parameters
+            if name in self.lora_dict:
+                for (B, A) in self.lora_dict[name]:
+                    if param.ndim == 4:
+                        BA = torch.einsum('ijr,rkl->ikjl', B, A)
+                    else:
+                        BA = B @ A
+                    param.data += BA * (self.alpha / len(self.lora_dict[name]))
+
+    def forward(self, *args, **kwargs):
+        for name in self.state_dict.keys():
+            self.state_dict[name].require_grad = False
+            for (B, A) in self.lora_dict[name]:
+                # (cout, kw, r)(r, cin, kh) -> (cout, in_channels, kernel_h, kernel_w)
+                if self.state_dict[name].ndim==4:
+                    BA = torch.einsum('ijr,rkl->ikjl', B, A)
+                else:
+                    BA = B @ A
+                self.state_dict[name] += BA * (self.alpha / len(self.lora_dict[name]))
+
+        return self.module.forward(*args, **kwargs)
+
+
+class OrthogonalFineTuneModule():
+    def __init__(self, 
+                 module : nn.Module,
+                 r : int=4,
+                 verbose : bool=True) -> nn.Module:
+        self.module = module
+        self.oft_dict = {}
+        self.state_dict = self.module.state_dict()
+        for name, tensor in self.state_dict.items():
+            if verbose:
+                logging.info(f'param name: {name}, shape: {tensor.shape}, requires_grad: {tensor.requires_grad}')
+            if tensor.ndim == 2: # linear layer
+                n_blocks = r
+            if tensor.ndim == 4: # conv2d layer
+                # n_blocks = number of convolutional neurons in layer
+                n_blocks = tensor.shape[1]
+            # add orthogonal fine-tuning paramerter
+            self.oft_dict[name] = []
+            for block in range(r):
+                # add parameter matrix R of shape (out_features/r, in_features/r) to module
+                R = torch.zeros((tensor.shape[0]//r, tensor.shape[0]//r), device=tensor.device, requires_grad=True)
+                module.register_parameter(f'oft_{name}_block{block}', nn.Parameter(R))
+                self.oft_dict[name].append(R)
+
+        return self.module
+
+    def forward(self, *args, **kwargs):
+        for name in self.state_dict.keys():
+            self.state_dict[name].require_grad = False
+            R = torch.block_diag(*self.oft_dict[name])
+            self.state_dict[name] = R @ self.state_dict[name]
+
+        return self.module.forward(*args, **kwargs)
+
+        
+    
