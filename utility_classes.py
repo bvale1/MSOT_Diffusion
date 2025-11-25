@@ -617,51 +617,78 @@ class LoRaFineTuneModule(nn.Module):
                  module : nn.Module,
                  r : int=4,
                  alpha : float=1.0,
-                 verbose : bool=True) -> nn.Module:
+                 leaky_relu_slope : float=0.0,
+                 verbose : bool=True) -> None:
+        super(LoRaFineTuneModule, self).__init__()
+        self.module = module
+        self.r = r
+        self.alpha = alpha
+        self.leaky_relu_slope = leaky_relu_slope
+        self.verbose = verbose
+        self.lora_names = {}
+
         for name, param in self.module.named_parameters():
             if verbose:
                 logging.info(f'param name: {name}, shape: {param.shape}, requires_grad: {param.requires_grad}')
             if param.ndim == 2: # linear layer
                 d, n = param.shape
-                A = torch.zeros((r, n), device=param.device, requires_grad=True)
-                B = torch.zeros((d, r), device=param.device, requires_grad=True)
+                A = torch.zeros((r, n), device=param.device)
+                B = torch.zeros((d, r), device=param.device)
             elif param.ndim == 4: # conv2d layer
                 # (out_channels, in_channels, kernel_h, kernel_w)
                 cout, cin, kh, kw = param.shape
-                A = torch.zeros((r, cin, kh), device=param.device, requires_grad=True)
-                B = torch.zeros((cout, kw, r), device=param.device, requires_grad=True)
+                A = torch.zeros((r, cin, kh), device=param.device)
+                B = torch.zeros((cout, kw, r), device=param.device)
+            else:
+                continue  # skip non-linear/conv2d layers
             # add LoRa parameters A and B to module
             # initialize B with kaiming normal, A with zeros
-            nn.init.kaiming_normal_(B, mode='fan_out', nonlinearity='relu')
-            nn.init.zeros_(A)
-            module.register_parameter(f'lora_{name}_A', nn.Parameter(A))
-            module.register_parameter(f'lora_{name}_B', nn.Parameter(B))
-            self.lora_dict[name].append((B, A))
-        
-        # Update the actual module weights with LoRA adaptation
-        for name, param in self.module.named_parameters():
-            if name.startswith('lora_'):
-                continue  # Skip LoRA parameters
-            if name in self.lora_dict:
-                for (B, A) in self.lora_dict[name]:
-                    if param.ndim == 4:
-                        BA = torch.einsum('ijr,rkl->ikjl', B, A)
-                    else:
-                        BA = B @ A
-                    param.data += BA * (self.alpha / len(self.lora_dict[name]))
+            nn.init.zeros_(B)
+            nn.init.kaiming_uniform_(A, a=self.leaky_relu_slope, mode='fan_in', nonlinearity='leaky_relu')
+            # For conv2d: fan_in = cin * kh (receptive field per output element)
+            # For linear: fan_in = n (number of input features)
+            
+            if self.verbose:
+                logging.info(f'Adding LoRa parameters for {name}: A shape {A.shape}, B shape {B.shape}')
+            name_no_dot = name.replace('.', '_') # cannot have '.' in parameter names
+            self.lora_names[name] = (f'lora_{name_no_dot}_B', f'lora_{name_no_dot}_A')
+            self.register_parameter(f'lora_{name_no_dot}_A', nn.Parameter(A))
+            self.register_parameter(f'lora_{name_no_dot}_B', nn.Parameter(B))
+            
+    def eval(self):
+        self.module.eval()
+        return self
+    
+    def train(self, mode: bool = True):
+        self.module.train(mode)
+        for name, (name_B, name_A) in self.lora_names.items():
+            if self.verbose:
+                logging.info(f'Setting requires_grad for {name}, {name_B}, {name_A}')
+            self.module.get_parameter(name).requires_grad = False
+            self.get_parameter(name_B).requires_grad = True
+            self.get_parameter(name_A).requires_grad = True
+        return self
 
     def forward(self, *args, **kwargs):
-        for name in self.state_dict.keys():
-            self.state_dict[name].require_grad = False
-            for (B, A) in self.lora_dict[name]:
-                # (cout, kw, r)(r, cin, kh) -> (cout, in_channels, kernel_h, kernel_w)
-                if self.state_dict[name].ndim==4:
-                    BA = torch.einsum('ijr,rkl->ikjl', B, A)
-                else:
-                    BA = B @ A
-                self.state_dict[name] += BA * (self.alpha / len(self.lora_dict[name]))
+        for name, (name_B, name_A) in self.lora_names.items():
+            
+            if self.module.get_parameter(name).ndim==4:
+                # (cout, kw, r)(r, cin, kh) -> (cout, cin, kernel_h, kernel_w)
+                self.module.get_parameter(name).data += self.alpha * torch.einsum('ijr,rkl->ikjl', self.get_parameter(name_B).data, self.get_parameter(name_A).data)
+            else:
+                # (d, r)(r, n) -> (d, n)
+                self.module.get_parameter(name).data += self.alpha * (self.get_parameter(name_B).data @ self.get_parameter(name_A).data)
 
-        return self.module.forward(*args, **kwargs)
+        output = self.module.forward(*args, **kwargs)
+
+        for name, (name_B, name_A) in self.lora_names.items():
+            if self.module.get_parameter(name).ndim==4:
+                # remove LoRa update
+                self.module.get_parameter(name).data -= self.alpha * torch.einsum('ijr,rkl->ikjl', self.get_parameter(name_B).data, self.get_parameter(name_A).data)
+            else:
+                self.module.get_parameter(name).data -= self.alpha * (self.get_parameter(name_B).data @ self.get_parameter(name_A).data)
+
+        return output
 
 
 class OrthogonalFineTuneModule():

@@ -190,13 +190,12 @@ if __name__ == '__main__':
             for param in model.downs.parameters():
                 param.requires_grad = False
 
-    # if args.oft_rank > 0:
-    #     model = uf.orthogonal_fine_tune(
-    #         model,
-    #         r=args.oft_rank,
-    #         alpha=32
-    #     )
-    # os._exit(0)
+    if args.oft_rank > 0:
+        model = uf.LoRaFineTuneModule(
+            model,
+            r=args.oft_rank,
+            leaky_relu_slope=0.01,
+        )
         
 
     print(model)
@@ -309,7 +308,6 @@ if __name__ == '__main__':
                         
             total_train_loss += loss.item()
             loss.backward()
-            #nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             if args.model == 'EDM2':
                 lr = learning_rate_schedule(
                     cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=0.01, ref_batches=70000, rampup_Mimg=0.1
@@ -319,6 +317,8 @@ if __name__ == '__main__':
                 for param in model.parameters():
                     if param.grad is not None:
                         torch.nan_to_num(param.grad, nan=0, posinf=0, neginf=0, out=param.grad)
+            else:
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             
             optimizer.step()
 
@@ -363,7 +363,7 @@ if __name__ == '__main__':
                 if args.save_dir:
                     # priority is given to the validation loss of the experimental data
                     checkpointer(module, epoch, experimental_val_loss)
-                if not args.no_lr_scheduler:
+                if not args.no_lr_scheduler and args.model != 'EDM2':
                     scheduler.step(experimental_val_loss)
 
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
@@ -379,7 +379,7 @@ if __name__ == '__main__':
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
                     checkpointer(module, epoch, synthetic_val_loss)
-                if not args.no_lr_scheduler:
+                if not args.no_lr_scheduler and args.model != 'EDM2':
                     scheduler.step(synthetic_val_loss)
                 
         logging.info(f'lr: {optimizer.param_groups[0]['lr']}')
@@ -480,7 +480,7 @@ if __name__ == '__main__':
         (X_3, mu_a_3, fluence3, wavelength_nm_3, mask_3, _, file_3) = examples_dataset[3][:7]
         (X_4, mu_a_4, fluence5, wavelength_nm_4, mask_4, _, file_4) = examples_dataset[4][:7]
         files = [file_0, file_1, file_2, file_3, file_4]
-        files = ['.'.join(files.split('/')[-1].split('.')[:-1]) for files in files]
+        files = ['.'.join(file.split('/')[-1].split('.')[:-1]) for file in files]
         
         X = torch.stack((X_0, X_1, X_2, X_3, X_4), dim=0).to(device)
         mu_a = torch.stack((mu_a_0, mu_a_1, mu_a_2, mu_a_3, mu_a_4), dim=0)
