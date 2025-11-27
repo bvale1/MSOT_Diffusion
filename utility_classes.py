@@ -312,7 +312,7 @@ class SyntheticReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         if self.mask_transform:
             bg_mask = self.mask_transform(bg_mask)
         
-        return (X, Y, fluence, wavelength_nm, bg_mask, torch.zeros_like(bg_mask), self.samples[idx])
+        return (X, Y, fluence, wavelength_nm, bg_mask, torch.zeros_like(bg_mask), self.samples[idx].decode('utf-8'))
     
 
 class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
