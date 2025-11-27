@@ -397,7 +397,7 @@ if __name__ == '__main__':
                 if not args.no_lr_scheduler and args.model != 'EDM2':
                     scheduler.step(synthetic_val_loss)
                 
-        logging.info(f'lr: {optimizer.param_groups[0]['lr']}')
+        logging.info(f"lr: {optimizer.param_groups[0]['lr']}")
         if args.wandb_log:
             wandb.log({'lr' : optimizer.param_groups[0]['lr'],
                        'mean_train_loss' : total_train_loss/len(train_loader)})

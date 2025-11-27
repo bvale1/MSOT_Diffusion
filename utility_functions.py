@@ -278,8 +278,8 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
             datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         )
     }
-    logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
-        test: {len(datasets["test"])}')
+    logging.info(f"train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
+        test: {len(datasets['test'])}")
     return (datasets, dataloaders, transforms_dict)
 
 
@@ -340,8 +340,8 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
             datasets['test'], batch_size=args.val_batch_size, shuffle=False, num_workers=4
         )
     }
-    logging.info(f'train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
-        test: {len(datasets["test"])}')
+    logging.info(f"train: {len(datasets['train'])}, val: {len(datasets['val'])}, \
+        test: {len(datasets['test'])}")
     return (datasets, dataloaders, transforms_dict)
 
 
