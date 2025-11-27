@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
+import peft
 
 from edm2.training.networks_edm2 import Precond
 from edm2.training.training_loop import EDM2Loss
@@ -190,12 +191,18 @@ if __name__ == '__main__':
             for param in model.downs.parameters():
                 param.requires_grad = False
 
-    if args.oft_rank > 0:
-        model = uf.LoRaFineTuneModule(
-            model,
-            r=args.oft_rank,
-            leaky_relu_slope=0.01,
+    if args.boft_rank > 0:
+        boft_config = peft.BOFTConfig(
+            boft_block_size=args.boft_rank,
+            boft_n_butterfly_factor=2,
+            target_modules=".*",  # Regex to match all modules
+            modules_to_save=None,
+            boft_dropout=0.1,
+            bias="none",
         )
+        model = peft.get_peft_model(model, boft_config)
+        logging.info(f'BOFT applied with rank {args.boft_rank} to all modules')
+        model.print_trainable_parameters()
         
 
     print(model)

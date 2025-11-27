@@ -13,6 +13,7 @@ from abc import abstractmethod
 from typing import Union, Literal
 import torch.nn as nn
 from typing import Dict
+from copy import deepcopy
 
 class KlDivergenceStandaredNormal(nn.Module):
     '''KL divergence between a normal distribution and a standard normal distribution.
@@ -623,9 +624,14 @@ class LoRaFineTuneModule(nn.Module):
         self.module = module
         self.r = r
         self.alpha = alpha
+        self.scaling = alpha / r
         self.leaky_relu_slope = leaky_relu_slope
         self.verbose = verbose
         self.lora_names = {}
+        
+        
+        # clone the module
+        self.module_clone = deepcopy(self.module)
 
         for name, param in self.module.named_parameters():
             if verbose:
@@ -674,19 +680,15 @@ class LoRaFineTuneModule(nn.Module):
             
             if self.module.get_parameter(name).ndim==4:
                 # (cout, kw, r)(r, cin, kh) -> (cout, cin, kernel_h, kernel_w)
-                self.module.get_parameter(name).data += self.alpha * torch.einsum('ijr,rkl->ikjl', self.get_parameter(name_B).data, self.get_parameter(name_A).data)
+                self.module.get_parameter(name).data += self.scaling * torch.einsum('ijr,rkl->ikjl', self.get_parameter(name_B).data, self.get_parameter(name_A).data)
             else:
                 # (d, r)(r, n) -> (d, n)
-                self.module.get_parameter(name).data += self.alpha * (self.get_parameter(name_B).data @ self.get_parameter(name_A).data)
+                self.module.get_parameter(name).data += self.scaling * (self.get_parameter(name_B).data @ self.get_parameter(name_A).data)
 
         output = self.module.forward(*args, **kwargs)
 
-        for name, (name_B, name_A) in self.lora_names.items():
-            if self.module.get_parameter(name).ndim==4:
-                # remove LoRa update
-                self.module.get_parameter(name).data -= self.alpha * torch.einsum('ijr,rkl->ikjl', self.get_parameter(name_B).data, self.get_parameter(name_A).data)
-            else:
-                self.module.get_parameter(name).data -= self.alpha * (self.get_parameter(name_B).data @ self.get_parameter(name_A).data)
+        # restore the original module parameters
+        self.module = self.module_clone
 
         return output
 

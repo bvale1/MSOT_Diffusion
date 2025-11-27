@@ -42,7 +42,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--attention', default=False, help='diffusion UNet only, use attention heads', action='store_true')
     parser.add_argument('--std_data', type=float, default=0.5, help='standard normalisation only, expected std of the data after normalisation')
     parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
-    parser.add_argument('--oft_rank', type=int, default=4, help='rank for OFT layers, 0 means no OFT')
+    parser.add_argument('--boft_rank', type=int, default=8, help='rank for butterfly orthogonal fine tuning layers, 0 means no BOFT')
     parser.add_argument('--wl_conditioning', default=False, help='use wavelength conditioning in diffusion models', action='store_true')
 
     args = parser.parse_args()
