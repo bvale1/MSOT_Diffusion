@@ -192,12 +192,20 @@ if __name__ == '__main__':
                 param.requires_grad = False
 
     if args.boft_rank > 0:
+        match args.model:
+            case 'UNet_e2eQPAT':
+                target_modules = [
+                    "0",  # Matches Conv2d at position 0 in Sequential blocks
+                    "2",  # Matches Conv2d at position 2 in Sequential blocks
+                ]
+            case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'DDIM' | 'DiT' | 'EDM2' | 'Swin_UNet':
+                raise NotImplementedError('BOFT not implemented for this model yet')
         boft_config = peft.BOFTConfig(
             boft_block_size=args.boft_rank,
             boft_n_butterfly_factor=2,
-            target_modules=".*",  # Regex to match all modules
+            target_modules=target_modules,
             modules_to_save=None,
-            boft_dropout=0.1,
+            boft_dropout=0.0,
             bias="none",
         )
         model = peft.get_peft_model(model, boft_config)
