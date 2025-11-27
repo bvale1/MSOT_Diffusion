@@ -101,8 +101,8 @@ def evaluate_sweep(
             inclusion_metrics = inclusion_metric_calculator.get_metrics()
             inclusion_RMSEs.append(inclusion_metrics['mean_RMSE'])
             inclusion_Rel_Errs.append(inclusion_metrics['mean_Rel_Err'])
-            logging.info(f'all inclusion RMSEs: {inclusion_metric_calculator.metrics["RMSE"]}')
-            logging.info(f'Inclusion Rel Err: {inclusion_metric_calculator.metrics["Rel_Err"]}')
+            # logging.info(f'all inclusion RMSEs: {inclusion_metric_calculator.metrics["RMSE"]}')
+            # logging.info(f'Inclusion Rel Err: {inclusion_metric_calculator.metrics["Rel_Err"]}')
 
 
         elif var_args['synthetic_or_experimental'] == 'synthetic':          
@@ -118,8 +118,8 @@ def evaluate_sweep(
         bg_metrics = bg_metric_calculator.get_metrics()
         bg_RMSEs.append(bg_metrics['mean_RMSE'])
         bg_Rel_Errs.append(bg_metrics['mean_Rel_Err'])
-        logging.info(f'all background RMSEs: {bg_metric_calculator.metrics["RMSE"]}')
-        logging.info(f'all background Rel Errs: {bg_metric_calculator.metrics["Rel_Err"]}')
+        # logging.info(f'all background RMSEs: {bg_metric_calculator.metrics["RMSE"]}')
+        # logging.info(f'all background Rel Errs: {bg_metric_calculator.metrics["Rel_Err"]}')
 
     folds_bg_RMSEs.append(bg_RMSEs)
     folds_bg_Rel_Errs.append(bg_Rel_Errs)
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='PHEMA EDM2 Sweep')
     parser.add_argument('--save_dir', type=str, required=False, default=False, help='Path to config file and pickles')
-    parser.add_argument('--folds_dir', type=str, required=False, default='fine_tuned_edm2_models', help='Path to directory containing pretrained model folders for cross-validation sweep')
+    parser.add_argument('--folds_dir', type=str, required=False, default='pretrained_edm2_models', help='Path to directory containing pretrained model folders for cross-validation sweep')
     parser.add_argument('--val_batch_size', type=int, required=False, default=32, help='Validation batch size, overrides saved args if provided')
     parser.add_argument('--load_phema_metrics_json', type=str, required=False, default=False, help='Path to PHEMA metrics file to load for plotting only, in case already computed')
     parser.add_argument('--experimental_root_dir', type=str, required=False, default='/home/billy/Datasets/Dataset_for_Moving_beyond_simulation_data_driven_quantitative_photoacoustic_imaging_using_tissue_mimicking_phantoms/', help='path to the root directory of the experimental dataset.')
