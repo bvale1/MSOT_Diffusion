@@ -83,7 +83,7 @@ if __name__ == '__main__':
                 in_channels=channels, out_channels=out_channels,
                 initial_filter_size=64, kernel_size=3
             )
-        case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
+        case 'UNet_wl_pos_emb':
             # model = ddp.Unet(
             #     dim=32, channels=channels, out_dim=out_channels,
             #     self_condition=False, image_condition=False, use_attn=args.attention,
@@ -98,10 +98,20 @@ if __name__ == '__main__':
                 img_resolution=args.image_size,
                 img_channels_in=channels,
                 img_channels_out=out_channels,
+                label_dim=1000,
+                model_channels=64,
+                attn_resolutions=[16, 8] if args.attention else [],
+                noise_emb=False,
+            )
+        case 'UNet_diffusion_ablation':
+            model = EDM2_UNet(
+                img_resolution=args.image_size,
+                img_channels_in=channels,
+                img_channels_out=out_channels,
                 label_dim=0,
                 model_channels=64,
                 attn_resolutions=[16, 8] if args.attention else [],
-                use_fp16=False,
+                noise_emb=False,
             )
         case 'Swin_UNet':
             model = SwinTransformerSys(
@@ -276,9 +286,13 @@ if __name__ == '__main__':
                 case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.squeeze())
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                    Y_hat = model(X)
                 case 'DDIM':
                     if args.predict_fluence:
                         loss = diffusion.forward(torch.cat((mu_a, fluence), dim=1), x_cond=X)
@@ -468,7 +482,11 @@ if __name__ == '__main__':
                 case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.to(device).squeeze())
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
                 case 'DDIM' | 'DiT':
@@ -520,9 +538,13 @@ if __name__ == '__main__':
                 case 'UNet_e2eQPAT' | 'Swin_UNet':
                     Y_hat = model(X)
                 case 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.squeeze())
+                    wavelength_nm_onehot = torch.zeros(
+                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                    )
+                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                    Y_hat = model(X)
                 case 'DDIM' | 'DiT':
                     Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
                 case 'EDM2':

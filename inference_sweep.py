@@ -225,9 +225,13 @@ if __name__ == "__main__":
                 case 'experimental':
                     train_loader = dataloaders['experimental']['train']
 
-            modules = reconstruct_edm2_phema_from_dir(
-                save_dir, phema_reconstruction_stds, delete_pkls=False
-            )
+            try:
+                modules = reconstruct_edm2_phema_from_dir(
+                    save_dir, phema_reconstruction_stds, delete_pkls=False
+                )
+            except Exception as e:
+                logging.error(f'Error loading modules from {save_dir}, make sure you checkout the edm2 repository version used during training. Exception: {e}')
+                raise RuntimeError(f'Error loading modules from {save_dir}: {e}')
             
             bg_RMSEs, bg_Rel_Errs, inclusion_RMSEs, inclusion_Rel_Errs = evaluate_sweep(
                 modules, args_namespace, var_args, dataloaders, transforms_dict, device, 
