@@ -12,6 +12,7 @@ import denoising_diffusion_pytorch as ddp
 import peft
 
 from edm2.training.networks_edm2 import Precond
+from edm2.training.networks_edm2 import UNet as EDM2_UNet
 from edm2.training.training_loop import EDM2Loss
 from edm2.training.training_loop import learning_rate_schedule
 from edm2.training.phema import PowerFunctionEMA
@@ -83,16 +84,25 @@ if __name__ == '__main__':
                 initial_filter_size=64, kernel_size=3
             )
         case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
-            model = ddp.Unet(
-                dim=32, channels=channels, out_dim=out_channels,
-                self_condition=False, image_condition=False, use_attn=args.attention,
-                full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
-            )
+            # model = ddp.Unet(
+            #     dim=32, channels=channels, out_dim=out_channels,
+            #     self_condition=False, image_condition=False, use_attn=args.attention,
+            #     full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
+            # )
             #model = TimeConditionedResUNet(
             #    dim_in=channels, dim_out=out_channels, dim_first_layer=64,
             #    kernel_size=3, theta_pos_emb=10000, self_condition=False,
             #    image_condition=False
             #)
+            model = EDM2_UNet(
+                img_resolution=args.image_size,
+                img_channels_in=channels,
+                img_channels_out=out_channels,
+                label_dim=0,
+                model_channels=64,
+                attn_resolutions=[16, 8] if args.attention else [],
+                use_fp16=False,
+            )
         case 'Swin_UNet':
             model = SwinTransformerSys(
                 img_size=image_size[0], patch_size=4, in_chans=channels, num_classes=out_channels,

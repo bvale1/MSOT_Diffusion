@@ -302,7 +302,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
         'train' : e2eQPATReconstructAbsorbtionDataset(
             os.path.join(args.experimental_root_dir, 'training'),
             stats=stats, fold=int(args.fold), train=True, augment=True,
-            use_all_data=False, experimental_data=True, shuffle=True,
+            use_all_data=False, experimental_data=True, shuffle=False,
             X_transform=transforms_dict['x_transform'], 
             Y_transform=transforms_dict['mu_a_transform'], 
             fluence_transform=transforms_dict['fluence_transform'],
