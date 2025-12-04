@@ -45,6 +45,8 @@ mu_a_reconstruction/
 
 # Dataset from preprocess.py 
 *Dataset/
+# Trained models and experiment results weight
+*models/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
