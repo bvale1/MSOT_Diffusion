@@ -4,7 +4,8 @@ import numpy as np
 
 
 
-file = '/mnt/c/Users/wv00017/OneDrive - University of Surrey/Documents/Meetings and Submissions/IEEE NSS MIC 2025  transfer learning for fluence correction/wandb_export_2025-05-05T16_41_01.910+01_00.csv'
+#file = '/mnt/c/Users/wv00017/OneDrive - University of Surrey/Documents/Meetings and Submissions/IEEE NSS MIC 2025  transfer learning for fluence correction/wandb_export_2025-05-05T16_41_01.910+01_00.csv'
+
 df = pd.read_csv(file)
 columns = df.columns.values
 

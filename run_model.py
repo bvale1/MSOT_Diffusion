@@ -80,8 +80,10 @@ if __name__ == '__main__':
     match args.model:
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
-                in_channels=channels, out_channels=out_channels,
-                initial_filter_size=64, kernel_size=3
+                in_channels=channels, 
+                out_channels=out_channels,
+                initial_filter_size=64, 
+                kernel_size=3
             )
         case 'UNet_wl_pos_emb':
             # model = ddp.Unet(
@@ -112,6 +114,8 @@ if __name__ == '__main__':
                 model_channels=64,
                 attn_resolutions=[16, 8] if args.attention else [],
                 noise_emb=False,
+                num_blocks=1,
+                channel_mult=[1,2,4,8,16],
             )
         case 'Swin_UNet':
             model = SwinTransformerSys(
@@ -189,9 +193,6 @@ if __name__ == '__main__':
             #    ref_batches=70e3, 
             #    rampup_Mimg=10
             #)
-
-            # TEST:
-            # - with and without attention heads
 
 
     if args.load_checkpoint_dir:
