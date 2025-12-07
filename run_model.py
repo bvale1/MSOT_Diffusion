@@ -115,7 +115,8 @@ if __name__ == '__main__':
                 attn_resolutions=[16, 8] if args.attention else [],
                 noise_emb=False,
                 num_blocks=1,
-                channel_mult=[1,2,4,8,16],
+                #channel_mult=[1,2,4,8,16],
+                channel_mult=[1,2,3,4,8],
             )
         case 'Swin_UNet':
             model = SwinTransformerSys(
@@ -244,7 +245,7 @@ if __name__ == '__main__':
         diffusion.to(device)
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
-    if args.model not in ['EDM2']:
+    if args.model not in ['EDM2', 'unet_diffusion_ablation']:
         optimizer = torch.optim.Adam(
             model.parameters(), lr=args.lr, eps=1e-8, amsgrad=True
         )
@@ -348,7 +349,7 @@ if __name__ == '__main__':
                         
             total_train_loss += loss.item()
             loss.backward()
-            if args.model == 'EDM2':
+            if args.model in ['EDM2', 'unet_diffusion_ablation']:
                 lr = learning_rate_schedule(
                     cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=0.01, ref_batches=70000, rampup_Mimg=0.1
                 )
@@ -362,7 +363,7 @@ if __name__ == '__main__':
             
             optimizer.step()
 
-            if args.model == 'EDM2':
+            if args.model in ['EDM2', 'unet_diffusion_ablation']:
                 # Update EMA and training state.
                 cur_nimg += X.shape[0]
                 ema.update(cur_nimg=cur_nimg, batch_size=X.shape[0])
@@ -383,7 +384,7 @@ if __name__ == '__main__':
             model.eval()
             if args.model in ['DDIM', 'DiT']:
                 module = diffusion.eval()
-            elif args.model in ['EDM2']:
+            elif args.model in ['EDM2', 'unet_diffusion_ablation']:
                 save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
                 module = reconstruct_edm2_phema_from_dir(
                     args.save_dir, [args.phema_reconstruction_std], delete_pkls=True)[0]['net']
@@ -403,7 +404,7 @@ if __name__ == '__main__':
                 if args.save_dir:
                     # priority is given to the validation loss of the experimental data
                     checkpointer(module, epoch, experimental_val_loss)
-                if not args.no_lr_scheduler and args.model != 'EDM2':
+                if not args.no_lr_scheduler and args.model not in ['EDM2', 'unet_diffusion_ablation']:
                     scheduler.step(experimental_val_loss)
 
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
@@ -419,7 +420,7 @@ if __name__ == '__main__':
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
                     checkpointer(module, epoch, synthetic_val_loss)
-                if not args.no_lr_scheduler and args.model != 'EDM2':
+                if not args.no_lr_scheduler and args.model not in ['EDM2', 'unet_diffusion_ablation']:
                     scheduler.step(synthetic_val_loss)
                 
         logging.info(f"lr: {optimizer.param_groups[0]['lr']}")
@@ -434,7 +435,7 @@ if __name__ == '__main__':
     model.eval()
     if args.model in ['DDIM', 'DiT']:
         module = diffusion.eval()
-    elif args.model in ['EDM2']:
+    elif args.model in ['EDM2', 'unet_diffusion_ablation']:
         save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
         module = reconstruct_edm2_phema_from_dir(args.save_dir, [args.phema_reconstruction_std])[0]['net']
         module.to(device).float()
