@@ -234,12 +234,6 @@ if __name__ == '__main__':
         logging.info(f'BOFT applied with rank {args.boft_rank} to all modules')
         model.print_trainable_parameters()
 
-    if args.l2_regularisation > 0.0:
-        logging.info(f'Using L2 regularisation with weight {args.l2_regularisation}')
-        pretrained_params = {
-            name: param.clone().detach() for name, param in model.named_parameters() if param.requires_grad
-        }
-        
 
     print(model)
     no_params = sum(p.numel() for p in model.parameters())
@@ -249,6 +243,12 @@ if __name__ == '__main__':
     model.to(device)
     if args.model in ['DDIM', 'DiT']:
         diffusion.to(device)
+        
+    if args.l2_regularisation > 0.0:
+        logging.info(f'Using L2 regularisation with weight {args.l2_regularisation}')
+        pretrained_params = {
+            name: param.clone().detach() for name, param in model.named_parameters() if param.requires_grad
+        }
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
     if args.model not in ['EDM2', 'unet_diffusion_ablation']:
