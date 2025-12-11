@@ -44,6 +44,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--phema_reconstruction_std', type=float, default=0.07, help='ema std to reconstruct for validation and testing epochs')
     parser.add_argument('--boft_rank', type=int, default=0, help='rank for butterfly orthogonal fine tuning layers, 0 means no BOFT')
     parser.add_argument('--wl_conditioning', default=False, help='use wavelength conditioning in diffusion models', action='store_true')
+    parser.add_argument('--l2_regularisation', type=float, default=0.0, help='weight for L2 regularisation loss term')
 
     args = parser.parse_args()
     var_args = vars(args)

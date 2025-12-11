@@ -114,7 +114,7 @@ if __name__ == '__main__':
                 model_channels=64,
                 attn_resolutions=[16, 8] if args.attention else [],
                 noise_emb=False,
-                num_blocks=1,
+                num_blocks=3,
                 #channel_mult=[1,2,4,8,16],
                 channel_mult=[1,2,3,4,8],
             )
@@ -233,6 +233,12 @@ if __name__ == '__main__':
         model = peft.get_peft_model(model, boft_config)
         logging.info(f'BOFT applied with rank {args.boft_rank} to all modules')
         model.print_trainable_parameters()
+
+    if args.l2_regularisation > 0.0:
+        logging.info(f'Using L2 regularisation with weight {args.l2_regularisation}')
+        pretrained_params = {
+            name: param.clone().detach() for name, param in model.named_parameters() if param.requires_grad
+        }
         
 
     print(model)
@@ -348,10 +354,14 @@ if __name__ == '__main__':
                         loss = mu_a_loss
                         
             total_train_loss += loss.item()
+            if args.l2_regularisation > 0.0:
+                loss += args.l2_regularisation * sum(
+                    (model.state_dict()[name] - pretrained_params[name]).pow(2).mean() for name in pretrained_params.keys()
+                )
             loss.backward()
             if args.model in ['EDM2', 'unet_diffusion_ablation']:
                 lr = learning_rate_schedule(
-                    cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=0.01, ref_batches=70000, rampup_Mimg=0.1
+                    cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=args.lr, ref_batches=70000, rampup_Mimg=0.1
                 )
                 for g in optimizer.param_groups:
                     g['lr'] = lr
