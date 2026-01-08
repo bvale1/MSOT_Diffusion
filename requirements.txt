@@ -12,3 +12,4 @@ tqdm==4.67.1
 pytorch-warmup==0.2.0
 timm==0.9.7
 peft==0.17.1
+dotenv==0.9.9

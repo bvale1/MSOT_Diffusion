@@ -70,7 +70,7 @@ def test_epoch(args : arpgparse.Namespace,
                device : torch.device,
                transforms_dict : dict[str, callable],
                logging_prefix : str,
-               num_steps : int = 32,
+               num_steps : int = 16,
                plot_all_reconstructions : bool = False,
                dataset : ReconstructAbsorbtionDataset = None) -> None:
     total_test_loss = 0

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import pytorch_warmup as warmup
 import denoising_diffusion_pytorch as ddp
 import peft
+import itertools
 
 from edm2.training.networks_edm2 import Precond
 from edm2.training.networks_edm2 import UNet as EDM2_UNet
@@ -72,7 +73,7 @@ if __name__ == '__main__':
         )
         datasets['combined'] = {'train' : combined_training_dataset}
         dataloaders['combined'] = {'train' : train_loader}
-        
+    
     # ==================== Model ====================
     image_size = (args.image_size, args.image_size)
     channels = datasets['synthetic']['test'][0][0].shape[-3]
@@ -175,26 +176,6 @@ if __name__ == '__main__':
             )
             if not args.attention:
                 uf.remove_attention(model.unet)
-                
-            # label_dim:
-            #    > labels are one-hot encoded classes (1000 classes in ImageNet)
-            #    > wavelength can be used for conditioning instead of class labels
-            #    > wavelength should be passed to the Precond model as a size (batch_size, n_wavelengths)
-            # - Work out what to use for sigma_data
-            #    > sigma is used to comput the time embedding instead of timestep t
-            # - Work out what model_channels does, and whether 192 is appropriate
-            #    > Base multiplier for the number of channels.
-            #    > keep as is for now.
-            # - Learning rate scheduler parameters are heavily dependent heavily on the network capacity and dataset
-            #   > For now the schedular is ommited
-            #scheduler = learning_rate_schedule(
-            #    cur_nimg=0, 
-            #    batch_size=args.train_batch_size,
-            #    ref_lr=100e-4,
-            #    ref_batches=70e3, 
-            #    rampup_Mimg=10
-            #)
-
 
     if args.load_checkpoint_dir:
         model.load_state_dict(
@@ -390,7 +371,7 @@ if __name__ == '__main__':
         
         # ==================== Validation epoch ====================
         # only validate every 10 epochs for diffusion, due to the long sampling time
-        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+1) % 10 == 0):
+        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+1) % 10 == 0) or (epoch < 10):
             model.eval()
             if args.model in ['DDIM', 'DiT']:
                 module = diffusion.eval()
@@ -409,8 +390,16 @@ if __name__ == '__main__':
                     transforms_dict=transforms_dict['experimental'],
                     logging_prefix='experimental_val'
                 )
+                experimental_train_loss, _, _ = test_epoch(
+                    args=args, module=module, 
+                    dataloader=itertools.islice(dataloaders['experimental']['train'], len(dataloaders['experimental']['val']) // 10),
+                    synthetic_or_experimental='experimental', device=device,
+                    transforms_dict=transforms_dict['experimental'],
+                    logging_prefix='experimental_train'
+                )
                 if args.wandb_log:
-                    wandb.log({'mean_experimental_val_loss' : experimental_val_loss})
+                    wandb.log({'mean_experimental_val_loss' : experimental_val_loss,
+                               'mean_experimental_train_loss' : experimental_train_loss})
                 if args.save_dir:
                     # priority is given to the validation loss of the experimental data
                     checkpointer(module, epoch, experimental_val_loss)
@@ -424,8 +413,15 @@ if __name__ == '__main__':
                     transforms_dict=transforms_dict['synthetic'],
                     logging_prefix='synthetic_val'
                 )
+                synthetic_train_loss, _, _ = test_epoch(
+                    args=args, module=module, 
+                    dataloader=itertools.islice(dataloaders['synthetic']['train'], len(dataloaders['synthetic']['val']) // 10),
+                    synthetic_or_experimental='synthetic', device=device,
+                    logging_prefix='synthetic_train'
+                )
                 if args.wandb_log:
-                    wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss})
+                    wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss,
+                               'mean_synthetic_train_loss' : synthetic_train_loss})
 
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
