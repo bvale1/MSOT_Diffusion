@@ -153,10 +153,10 @@ def test_epoch(args : arpgparse.Namespace,
                 if args.predict_fluence:
                     wandb.log({f'{logging_prefix}_fluence_loss' : fluence_loss.item()})
     
-    total_test_loss /= len_dataloader
+    total_test_loss /= dataloader_len
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'{logging_prefix}_time: {total_test_time}')
-    logging.info(f'{logging_prefix}_time_per_batch: {total_test_time/len_dataloader}')
+    logging.info(f'{logging_prefix}_time_per_batch: {total_test_time/dataloader_len}')
     logging.info(f'mean_{logging_prefix}_loss: {total_test_loss}')
     logging.info(f'background_{logging_prefix}_metrics: {bg_test_metric_calculator.get_metrics()}')
     if synthetic_or_experimental == 'experimental':
@@ -178,6 +178,6 @@ def test_epoch(args : arpgparse.Namespace,
             inclusion_metrics_dict = {f'inclusion_{logging_prefix}_{key}': inclusion_metrics_dict[key] for key in inclusion_metrics_dict.keys()}
             wandb.log(inclusion_metrics_dict)
         wandb.log({f'{logging_prefix}_time' : total_test_time,
-                   f'{logging_prefix}_time_per_batch' : total_test_time/len_dataloader})
+                   f'{logging_prefix}_time_per_batch' : total_test_time/dataloader_len})
         
     return total_test_loss, bg_test_metric_calculator, inclusion_test_metric_calculator
