@@ -70,17 +70,17 @@ def test_epoch(args : arpgparse.Namespace,
                device : torch.device,
                transforms_dict : dict[str, callable],
                logging_prefix : str,
+               dataloader_len : int,
                num_steps : int = 16,
                plot_all_reconstructions : bool = False,
-               dataset : ReconstructAbsorbtionDataset = None) -> None:
+               dataset : ReconstructAbsorbtionDataset = None,
+               ) -> None:
     total_test_loss = 0
     bg_test_metric_calculator = uc.TestMetricCalculator()
     inclusion_test_metric_calculator = uc.TestMetricCalculator()
     test_start_time = timeit.default_timer()
-    len_dataloader = 0 # needed because dataloader is an iterable but may not have __len__
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
-            len_dataloader += 1
             X = batch[0].to(device); mu_a = batch[1].to(device); 
             fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
             files = batch[6]  # added for saving test examples

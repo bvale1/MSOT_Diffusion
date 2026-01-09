@@ -388,14 +388,14 @@ if __name__ == '__main__':
                     args=args, module=module, dataloader=dataloaders['experimental']['val'], 
                     synthetic_or_experimental='experimental', device=device,
                     transforms_dict=transforms_dict['experimental'],
-                    logging_prefix='experimental_val'
+                    logging_prefix='experimental_val', dataloader_len=len(dataloaders['experimental']['val'])
                 )
                 experimental_train_loss, _, _ = test_epoch(
                     args=args, module=module, 
-                    dataloader=itertools.islice(dataloaders['experimental']['train'], len(dataloaders['experimental']['val']) // 10),
+                    dataloader=dataloaders['experimental']['train'],
                     synthetic_or_experimental='experimental', device=device,
                     transforms_dict=transforms_dict['experimental'],
-                    logging_prefix='experimental_train'
+                    logging_prefix='experimental_train', dataloader_len=len(dataloaders['experimental']['train'])
                 )
                 if args.wandb_log:
                     wandb.log({'mean_experimental_val_loss' : experimental_val_loss,
@@ -411,13 +411,14 @@ if __name__ == '__main__':
                     args=args, module=module, dataloader=dataloaders['synthetic']['val'], 
                     synthetic_or_experimental='synthetic', device=device,
                     transforms_dict=transforms_dict['synthetic'],
-                    logging_prefix='synthetic_val'
+                    logging_prefix='synthetic_val', dataloader_len=len(dataloaders['synthetic']['val'])
                 )
                 synthetic_train_loss, _, _ = test_epoch(
                     args=args, module=module, 
-                    dataloader=itertools.islice(dataloaders['synthetic']['train'], len(dataloaders['synthetic']['val']) // 10),
+                    dataloader=itertools.islice(dataloaders['synthetic']['train'], len(dataloaders['synthetic']['train']) // 10),
                     synthetic_or_experimental='synthetic', device=device,
-                    logging_prefix='synthetic_train'
+                    transforms_dict=transforms_dict['synthetic'],
+                    logging_prefix='synthetic_train', dataloader_len=len(dataloaders['synthetic']['train']) // 10
                 )
                 if args.wandb_log:
                     wandb.log({'mean_synthetic_val_loss' : synthetic_val_loss,
