@@ -77,8 +77,10 @@ def test_epoch(args : arpgparse.Namespace,
     bg_test_metric_calculator = uc.TestMetricCalculator()
     inclusion_test_metric_calculator = uc.TestMetricCalculator()
     test_start_time = timeit.default_timer()
+    len_dataloader = 0 # needed because dataloader is an iterable but may not have __len__
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
+            len_dataloader += 1
             X = batch[0].to(device); mu_a = batch[1].to(device); 
             fluence = batch[2].to(device); wavelength_nm = batch[3].to(device)
             files = batch[6]  # added for saving test examples
@@ -151,10 +153,10 @@ def test_epoch(args : arpgparse.Namespace,
                 if args.predict_fluence:
                     wandb.log({f'{logging_prefix}_fluence_loss' : fluence_loss.item()})
     
-    total_test_loss /= len(dataloader)  
+    total_test_loss /= len_dataloader
     total_test_time = timeit.default_timer() - test_start_time
     logging.info(f'{logging_prefix}_time: {total_test_time}')
-    logging.info(f'{logging_prefix}_time_per_batch: {total_test_time/len(dataloader)}')
+    logging.info(f'{logging_prefix}_time_per_batch: {total_test_time/len_dataloader}')
     logging.info(f'mean_{logging_prefix}_loss: {total_test_loss}')
     logging.info(f'background_{logging_prefix}_metrics: {bg_test_metric_calculator.get_metrics()}')
     if synthetic_or_experimental == 'experimental':
@@ -176,6 +178,6 @@ def test_epoch(args : arpgparse.Namespace,
             inclusion_metrics_dict = {f'inclusion_{logging_prefix}_{key}': inclusion_metrics_dict[key] for key in inclusion_metrics_dict.keys()}
             wandb.log(inclusion_metrics_dict)
         wandb.log({f'{logging_prefix}_time' : total_test_time,
-                   f'{logging_prefix}_time_per_batch' : total_test_time/len(dataloader)})
+                   f'{logging_prefix}_time_per_batch' : total_test_time/len_dataloader})
         
     return total_test_loss, bg_test_metric_calculator, inclusion_test_metric_calculator
