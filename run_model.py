@@ -483,45 +483,45 @@ if __name__ == '__main__':
             train_loader = dataloaders['synthetic']['train']
             examples_dataset = datasets['synthetic']['test']
             examples_transforms_dict = transforms_dict['synthetic']
-    with torch.no_grad():        
-        for i, batch in enumerate(train_loader):
-            (X, mu_a, _, wavelength_nm, _) = batch[:5]
-            X = X.to(device); mu_a = mu_a.to(device)
-            match args.model:
-                case 'UNet_e2eQPAT' | 'Swin_UNet':
-                    Y_hat = model(X)
-                case 'UNet_wl_pos_emb':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
-                case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM' | 'DiT':
-                    Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
-                case 'EDM2':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    channels = 2 if args.predict_fluence else 1
-                    noise = torch.randn(
-                        (X.shape[0], channels, args.image_size, args.image_size),
-                        device=device
-                    )
-                    Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
-            mu_a_hat = Y_hat[:, 0:1]
-            mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
-            best_checkpoint_train_mu_a_loss += mu_a_loss.item()
-    best_checkpoint_train_mu_a_loss /= len(train_loader)
-    best_checkpoint_val_mu_a_loss = checkpointer.best_metric_val
-    overfitting_ratio = best_checkpoint_val_mu_a_loss / best_checkpoint_train_mu_a_loss
-    logging.info(f'best_checkpoint_train_mu_a_loss: {best_checkpoint_train_mu_a_loss}')
-    logging.info(f'best_checkpoint_val_mu_a_loss: {best_checkpoint_val_mu_a_loss}')
-    logging.info(f'overfitting_ratio: {overfitting_ratio}')
-    if args.wandb_log:
-        wandb.log({'overfitting_ratio' : overfitting_ratio})
+    # with torch.no_grad():        
+    #     for i, batch in enumerate(train_loader):
+    #         (X, mu_a, _, wavelength_nm, _) = batch[:5]
+    #         X = X.to(device); mu_a = mu_a.to(device)
+    #         match args.model:
+    #             case 'UNet_e2eQPAT' | 'Swin_UNet':
+    #                 Y_hat = model(X)
+    #             case 'UNet_wl_pos_emb':
+    #                 wavelength_nm_onehot = torch.zeros(
+    #                     (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+    #                 )
+    #                 wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+    #                 Y_hat = model(X, class_labels=wavelength_nm_onehot)
+    #             case 'UNet_diffusion_ablation':
+    #                 Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+    #             case 'DDIM' | 'DiT':
+    #                 Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
+    #             case 'EDM2':
+    #                 wavelength_nm_onehot = torch.zeros(
+    #                     (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+    #                 )
+    #                 wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+    #                 channels = 2 if args.predict_fluence else 1
+    #                 noise = torch.randn(
+    #                     (X.shape[0], channels, args.image_size, args.image_size),
+    #                     device=device
+    #                 )
+    #                 Y_hat = edm_sampler(module, noise, x_cond=X, labels=wavelength_nm_onehot)
+    #         mu_a_hat = Y_hat[:, 0:1]
+    #         mu_a_loss = F.mse_loss(mu_a, mu_a_hat, reduction='mean')
+    #         best_checkpoint_train_mu_a_loss += mu_a_loss.item()
+    # best_checkpoint_train_mu_a_loss /= len(train_loader)
+    # best_checkpoint_val_mu_a_loss = checkpointer.best_metric_val
+    # overfitting_ratio = best_checkpoint_val_mu_a_loss / best_checkpoint_train_mu_a_loss
+    # logging.info(f'best_checkpoint_train_mu_a_loss: {best_checkpoint_train_mu_a_loss}')
+    # logging.info(f'best_checkpoint_val_mu_a_loss: {best_checkpoint_val_mu_a_loss}')
+    # logging.info(f'overfitting_ratio: {overfitting_ratio}')
+    # if args.wandb_log:
+    #     wandb.log({'overfitting_ratio' : overfitting_ratio})
     
     # ==================== Save test examples ====================
     if args.save_test_examples:
