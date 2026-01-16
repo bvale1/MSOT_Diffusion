@@ -453,14 +453,14 @@ if __name__ == '__main__':
             args=args, module=module, dataloader=dataloaders['experimental']['test'], 
             synthetic_or_experimental='experimental', device=device, 
             transforms_dict=transforms_dict['experimental'], 
-            logging_prefix='experimental_test'
+            logging_prefix='experimental_test', dataloader_len=len(dataloaders['experimental']['test'])
         )
     if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':
         synthetic_test_loss, _, _ = test_epoch(
             args=args, module=module, dataloader=dataloaders['synthetic']['test'], 
             synthetic_or_experimental='synthetic', device=device, 
             transforms_dict=transforms_dict['synthetic'], 
-            logging_prefix='synthetic_test'
+            logging_prefix='synthetic_test', dataloader_len=len(dataloaders['synthetic']['test'])
         )
     
     if args.save_dir and args.epochs > 0:
