@@ -378,7 +378,7 @@ if __name__ == '__main__':
             elif args.model in ['EDM2', 'unet_diffusion_ablation']:
                 save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
                 module = reconstruct_edm2_phema_from_dir(
-                    args.save_dir, [args.phema_reconstruction_std], delete_pkls=True)[0]['net']
+                    args.save_dir, [args.phema_reconstruction_std], delete_pkls=False)[0]['net']
                 module.to(device).float()
             else:
                 module = model
