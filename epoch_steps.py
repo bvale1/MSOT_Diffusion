@@ -28,11 +28,18 @@ def save_ema_pickles(
         cur_nimg : float, 
         loss_fn : EDM2Loss, 
         save_dir : str,
+        delete_previous : bool = False,
     ) -> None:
     # Save network snapshot.
     ema_list = ema.get()
     ema_list = ema_list if isinstance(ema_list, list) else [(ema_list, '')]
     for ema_net, ema_suffix in ema_list:
+        # find and delete previous pickle files
+        if delete_previous:
+            for fname in os.listdir(save_dir):
+                if fname.endswith(f'{ema_suffix}.pkl') and fname.startswith('network-snapshot-'):
+                    os.remove(os.path.join(save_dir, fname))
+        
         data = dnnlib.EasyDict(loss_fn=loss_fn)
         data.ema = copy.deepcopy(ema_net).cpu().eval().requires_grad_(False).to(torch.float16)
         fname = f'network-snapshot-{cur_nimg:08d}{ema_suffix}.pkl'
