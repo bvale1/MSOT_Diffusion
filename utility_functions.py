@@ -153,9 +153,7 @@ def reset_weights(module : nn.Module) -> None:
             reset_weights(m)
             
 
-def define_transforms(args : argparse.Namespace, config : dict) -> tuple:
-    # only one set of normalisation statistics for experimental data
-    fold = 0 if args.synthetic_or_experimental == 'experimental' else int(args.fold)
+def define_transforms(args : argparse.Namespace, config : dict, fold : int) -> tuple:
     match args.data_normalisation:
         case 'minmax':
             normalise_x = DatasetMaxMinNormalise(
@@ -241,7 +239,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     with open(os.path.join(args.synthetic_root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
     
-    transforms_dict = define_transforms(args, config)
+    transforms_dict = define_transforms(args, config, int(args.fold))
     
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
@@ -297,7 +295,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     with open(stats_path, 'r') as f:
         stats = json.load(f) # <- dataset config contains normalisation parameters
     
-    transforms_dict = define_transforms(args, stats)
+    transforms_dict = define_transforms(args, stats, fold=0)
     
     datasets = {
         'train' : e2eQPATReconstructAbsorbtionDataset(
