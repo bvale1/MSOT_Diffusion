@@ -232,7 +232,7 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion', name=f'{model_name}_fold{args.fold}', 
+            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}', 
             save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     
@@ -288,7 +288,7 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
     if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
-            project='MSOT_EDM2', name=f'{model_name}_fold{args.fold}', 
+            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}', 
             save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
         )
     
