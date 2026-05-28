@@ -154,35 +154,37 @@ def reset_weights(module : nn.Module) -> None:
             
 
 def define_transforms(args : argparse.Namespace, config : dict) -> tuple:
+    # only one set of normalisation statistics for experimental data
+    fold = 0 if args.synthetic_or_experimental == 'experimental' else int(args.fold)
     match args.data_normalisation:
         case 'minmax':
             normalise_x = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_X'][int(args.fold)]['max']]),
-                torch.Tensor([config['normalisation_X'][int(args.fold)]['min']]),
+                torch.Tensor([config['normalisation_X'][fold]['max']]),
+                torch.Tensor([config['normalisation_X'][fold]['min']]),
             )
             normalise_mu_a = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_mu_a'][int(args.fold)]['max']]),
-                torch.Tensor([config['normalisation_mu_a'][int(args.fold)]['min']]),
+                torch.Tensor([config['normalisation_mu_a'][fold]['max']]),
+                torch.Tensor([config['normalisation_mu_a'][fold]['min']]),
             )
             normalise_fluence = DatasetMaxMinNormalise(
-                torch.Tensor([config['normalisation_Phi'][int(args.fold)]['max']]),
-                torch.Tensor([config['normalisation_Phi'][int(args.fold)]['min']]),
+                torch.Tensor([config['normalisation_Phi'][fold]['max']]),
+                torch.Tensor([config['normalisation_Phi'][fold]['min']]),
             )
         
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_X'][int(args.fold)]['mean']]),
-                torch.Tensor([config['normalisation_X'][int(args.fold)]['std']]),
+                torch.Tensor([config['normalisation_X'][fold]['mean']]),
+                torch.Tensor([config['normalisation_X'][fold]['std']]),
                 sigma_data=args.std_data,
             )
             normalise_mu_a = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_mu_a'][int(args.fold)]['mean']]),
-                torch.Tensor([config['normalisation_mu_a'][int(args.fold)]['std']]),
+                torch.Tensor([config['normalisation_mu_a'][fold]['mean']]),
+                torch.Tensor([config['normalisation_mu_a'][fold]['std']]),
                 sigma_data=args.std_data,
             )
             normalise_fluence = DatasetMeanStdNormalise(
-                torch.Tensor([config['normalisation_Phi'][int(args.fold)]['mean']]),
-                torch.Tensor([config['normalisation_Phi'][int(args.fold)]['std']]),
+                torch.Tensor([config['normalisation_Phi'][fold]['mean']]),
+                torch.Tensor([config['normalisation_Phi'][fold]['std']]),
                 sigma_data=args.std_data,
             )
     x_transform = transforms.Compose([

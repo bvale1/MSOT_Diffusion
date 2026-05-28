@@ -14,9 +14,9 @@ MODELS = ['UNet-e2eQPAT']
 FOLDS = [0]
 
 DATASETS = {
-    "ImageNet" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_Diffusion2/20260522_ImageNet_MSOT_Dataset",
-    "Digimouse" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_Diffusion2/20260522_digimouse_MSOT_Dataset",
-    "Digimouse_extrusion" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_Diffusion2/20260522_digimouse_extrusion_MSOT_Dataset",
+    "ImageNet" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260522_ImageNet_MSOT_Dataset",
+    "Digimouse" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260522_digimouse_MSOT_Dataset",
+    "Digimouse_extrusion" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260522_digimouse_extrusion_MSOT_Dataset",
     "e2eQPAT" : "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/e2eQPAT_dataset",
 }
 
@@ -77,7 +77,7 @@ for model, fold in itertools.product(MODELS, FOLDS):
     ### Apptainer execution ###
     apptainer exec oras://container-registry.surrey.ac.uk/shared-containers/billy-msot_diffusion-container:latest \
     python3 clone_and_run_msot_diffusion.py \
-    --cluster_id .N\$SLURM_JOB_NODELIST.j\$SLURM_JOB_ID \
+    --cluster_id .N$SLURM_JOB_NODELIST.j$SLURM_JOB_ID \
     --save_dir {save_dirs[model]} \
     --synthetic_or_experimental "{synthetic_or_experimental}" \
     --synthetic_root_dir {DATASETS[synthetic_dataset]} \
