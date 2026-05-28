@@ -59,18 +59,6 @@ def compute_outputs(models_dirs, sample_indices):
                     self_condition=False, image_condition=False, full_attn=False,
                     flash_attn=False, learned_sinusoidal_cond=False
                 )
-            case 'DDIM':
-                out_channels = channels * 2 if args.predict_fluence else channels
-                model = ddp.Unet(
-                    dim=32, channels=out_channels, out_dim=out_channels,
-                    self_condition=args.self_condition, image_condition=True, 
-                    image_condition_channels=channels, full_attn=False, flash_attn=False
-                )
-                diffusion = ddp.GaussianDiffusion(
-                    # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-                    model, image_size=image_size, timesteps=1000,
-                    sampling_timesteps=100, objective=args.objective, auto_normalize=False,
-                )
         
         model.load_state_dict(torch.load(dir, weights_only=True))
         model.eval()
@@ -99,8 +87,6 @@ def compute_outputs(models_dirs, sample_indices):
                     Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
-                case 'DDIM':
-                    Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
         
         mu_a_hat = Y_hat[:, 0:1]
         outputs_dict[model_name]['X'] = transforms_dict[args.synthetic_or_experimental]['normalise_x'].inverse(X.cpu()).squeeze().numpy()

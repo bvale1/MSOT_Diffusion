@@ -93,7 +93,7 @@ def test_epoch(args : arpgparse.Namespace,
             files = batch[6]  # added for saving test examples
 
             match args.model:
-                case 'UNet_e2eQPAT' | 'Swin_UNet':
+                case 'UNet_e2eQPAT':
                     Y_hat = module(X)
                 case 'UNet_wl_pos_emb':
                     wavelength_nm_onehot = torch.zeros(
@@ -103,14 +103,6 @@ def test_epoch(args : arpgparse.Namespace,
                     Y_hat = module(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
                     Y_hat = module(X)
-                case 'DDIM':
-                    Y_hat = module.sample(batch_size=X.shape[0], x_cond=X)
-                case 'DiT':
-                    Y_hat = module.sample(
-                        batch_size=X.shape[0], 
-                        x_cond=X,
-                        wavelength_cond=wavelength_nm.squeeze()
-                    )
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device

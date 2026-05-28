@@ -8,7 +8,6 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_warmup as warmup
-import denoising_diffusion_pytorch as ddp
 import peft
 import itertools
 
@@ -24,12 +23,9 @@ import utility_classes as uc
 import utility_functions as uf
 from epoch_steps import *
 from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
-from nn_modules.DiT import DiT
-from nn_modules.swin_unet import SwinTransformerSys
 
-# An all purpose script for training, validating and testing the models
+# An all purpose script for training, validating and testing models
 # to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
-# --objective and --self_condition are only for diffusion (DDIM)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -129,41 +125,6 @@ if __name__ == '__main__':
                 final_upsample="expand_first"
             )
             uf.remove_softmax(model)
-        case 'DDIM':
-            model = ddp.Unet(
-                dim=32, channels=out_channels, out_dim=out_channels,
-                self_condition=args.self_condition, image_condition=True, 
-                image_condition_channels=channels, use_attn=args.attention,
-                full_attn=False, flash_attn=False
-            )
-            #model = TimeConditionedResUNet(
-            #    dim_in=out_channels, dim_out=out_channels, dim_first_layer=64,
-            #    kernel_size=3, theta_pos_emb=10000, self_condition=args.self_condition,
-            #    image_condition=True, dim_image_condition=channels
-            #)
-            diffusion = ddp.GaussianDiffusion(
-                # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-                model, image_size=image_size, timesteps=1000,
-                sampling_timesteps=100, objective=args.objective, auto_normalize=False,
-            )
-        case 'DiT':
-            # parameters depth=12, hidden_size=384, and num_heads=6 are the same as DiT-S/8.
-            # with an image size of 256 and patch size of 16, we have the 
-            # same number of patches as ViT from an image is worth 16x16 words
-            #if image_size[0] % 16 != 0:
-            #    raise ValueError('image size must be divisible by 16 for DiT model')
-            #patch_size = image_size[0] // 16
-            patch_size = 4
-            model = DiT(
-                dim_in=out_channels, dim_out=out_channels, input_size=image_size, 
-                depth=12, hidden_size=384, patch_size=patch_size, num_heads=6,
-                self_condition=args.self_condition, image_condition=True
-            )
-            diffusion = ddp.GaussianDiffusion(
-                # objecive='pred_v' predicts the velocity field, objective='pred_noise' predicts the noise
-                model, image_size=image_size, timesteps=1000,
-                sampling_timesteps=100, objective=args.objective, auto_normalize=False,
-            )
         case 'EDM2':
             attn_resolutions = [16, 8] if args.attention else []
             label_dim = 1000 if args.wl_conditioning else 0
@@ -222,8 +183,6 @@ if __name__ == '__main__':
     if args.wandb_log: 
         wandb.log({'number_of_parameters' : no_params})
     model.to(device)
-    if args.model in ['DDIM', 'DiT']:
-        diffusion.to(device)
         
     if args.l2_regularisation > 0.0:
         logging.info(f'Using L2 regularisation with weight {args.l2_regularisation}')
@@ -282,24 +241,6 @@ if __name__ == '__main__':
                     Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X)
-                case 'DDIM':
-                    if args.predict_fluence:
-                        loss = diffusion.forward(torch.cat((mu_a, fluence), dim=1), x_cond=X)
-                    else:
-                        loss = diffusion.forward(mu_a, x_cond=X)
-                case 'DiT':
-                    if args.predict_fluence:
-                        loss = diffusion.forward(
-                            torch.cat((mu_a, fluence), dim=1),
-                            x_cond=X, 
-                            wavelength_cond=wavelength_nm.squeeze()
-                        )
-                    else:
-                        loss = diffusion.forward(
-                            mu_a,
-                            x_cond=X, 
-                            wavelength_cond=wavelength_nm.squeeze()
-                        )
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
@@ -317,7 +258,7 @@ if __name__ == '__main__':
                         )
 
             match args.model:
-                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'Swin_UNet':
+                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
                     mu_a_hat = Y_hat[:, 0:1]
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
                     if args.predict_fluence:
@@ -326,7 +267,7 @@ if __name__ == '__main__':
                         loss = mu_a_loss + fluence_loss
                     else:
                         loss = mu_a_loss
-                case 'DDIM' | 'DiT' | 'EDM2':
+                case 'EDM2':
                     mu_a_loss = loss[:, 0:1].mean()
                     if args.predict_fluence:
                         fluence_loss = loss[:, 1:2].mean()
@@ -373,9 +314,7 @@ if __name__ == '__main__':
         # only validate every 10 epochs for diffusion, due to the long sampling time
         if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+1) % 10 == 0) or (epoch < 10):
             model.eval()
-            if args.model in ['DDIM', 'DiT']:
-                module = diffusion.eval()
-            elif args.model in ['EDM2', 'unet_diffusion_ablation']:
+            if args.model in ['EDM2', 'unet_diffusion_ablation']:
                 save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir, delete_previous=True)
                 module = reconstruct_edm2_phema_from_dir(
                     args.save_dir, [args.phema_reconstruction_std], delete_pkls=False)[0]['net']
@@ -440,14 +379,6 @@ if __name__ == '__main__':
     logging.info('loading checkpoint with best validation loss for testing')
     checkpointer.load_best_model(model)
     model.eval()
-    if args.model in ['DDIM', 'DiT']:
-        module = diffusion.eval()
-    # elif args.model in ['EDM2', 'unet_diffusion_ablation']:
-    #     save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir)
-    #     module = reconstruct_edm2_phema_from_dir(args.save_dir, [args.phema_reconstruction_std])[0]['net']
-    #     module.to(device).float()
-    else:
-        module = model
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
         experimental_test_loss, _, _ = test_epoch(
             args=args, module=module, dataloader=dataloaders['experimental']['test'], 
@@ -554,8 +485,6 @@ if __name__ == '__main__':
                     Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
                     Y_hat = model(X)
-                case 'DDIM' | 'DiT':
-                    Y_hat = diffusion.sample(batch_size=X.shape[0], x_cond=X)
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device

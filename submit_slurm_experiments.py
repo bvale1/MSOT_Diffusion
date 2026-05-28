@@ -2,7 +2,7 @@ import subprocess
 import os
 import itertools
 import textwrap
-import datetime
+from datetime import datetime
 
 root_dir = 'preprocessing/20240517_BphP_cylinders_no_noise/'
 
@@ -50,6 +50,8 @@ for model, fold in itertools.product(MODELS, FOLDS):
     wandb_notes = f"{experiment}_{model}_fold{fold}"
 
     sub_file = textwrap.dedent(f"""
+    #!/bin/bash
+                               
     ### Job Name ###
     #SBATCH --job-name={model}_fold{fold}
 
@@ -74,7 +76,7 @@ for model, fold in itertools.product(MODELS, FOLDS):
 
     ### Apptainer execution ###
     apptainer exec oras://container-registry.surrey.ac.uk/shared-containers/billy-msot_diffusion-container:latest \
-    python3 \$PWD/clone_and_run_msot_diffusion.py \
+    python3 clone_and_run_msot_diffusion.py \
     --cluster_id .N\$SLURM_JOB_NODELIST.j\$SLURM_JOB_ID \
     --save_dir {save_dirs[model]} \
     --synthetic_or_experimental "{synthetic_or_experimental}" \
