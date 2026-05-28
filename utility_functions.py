@@ -159,32 +159,32 @@ def define_transforms(args : argparse.Namespace, normalise_params) -> tuple:
     match args.data_normalisation:
         case 'minmax':
             normalise_x = DatasetMaxMinNormalise(
-                torch.Tensor([normalise_params['normalisation_X']['max']]),
-                torch.Tensor([normalise_params['normalisation_X']['min']]),
+                torch.Tensor([normalise_params['normalisation_X'][int(args.fold)]['max']]),
+                torch.Tensor([normalise_params['normalisation_X'][int(args.fold)]['min']]),
             )
             normalise_mu_a = DatasetMaxMinNormalise(
-                torch.Tensor([normalise_params['normalisation_mu_a']['max']]),
-                torch.Tensor([normalise_params['normalisation_mu_a']['min']]),
+                torch.Tensor([normalise_params['normalisation_mu_a'][int(args.fold)]['max']]),
+                torch.Tensor([normalise_params['normalisation_mu_a'][int(args.fold)]['min']]),
             )
             normalise_fluence = DatasetMaxMinNormalise(
-                torch.Tensor([normalise_params['normalisation_Phi']['max']]),
-                torch.Tensor([normalise_params['normalisation_Phi']['min']]),
+                torch.Tensor([normalise_params['normalisation_Phi'][int(args.fold)]['max']]),
+                torch.Tensor([normalise_params['normalisation_Phi'][int(args.fold)]['min']]),
             )
-            
+        
         case 'standard':
             normalise_x = DatasetMeanStdNormalise(
-                torch.Tensor([normalise_params['normalisation_X']['mean']]),
-                torch.Tensor([normalise_params['normalisation_X']['std']]),
+                torch.Tensor([normalise_params['normalisation_X'][int(args.fold)]['mean']]),
+                torch.Tensor([normalise_params['normalisation_X'][int(args.fold)]['std']]),
                 sigma_data=args.std_data,
             )
             normalise_mu_a = DatasetMeanStdNormalise(
-                torch.Tensor([normalise_params['normalisation_mu_a']['mean']]),
-                torch.Tensor([normalise_params['normalisation_mu_a']['std']]),
+                torch.Tensor([normalise_params['normalisation_mu_a'][int(args.fold)]['mean']]),
+                torch.Tensor([normalise_params['normalisation_mu_a'][int(args.fold)]['std']]),
                 sigma_data=args.std_data,
             )
             normalise_fluence = DatasetMeanStdNormalise(
-                torch.Tensor([normalise_params['normalisation_Phi']['mean']]),
-                torch.Tensor([normalise_params['normalisation_Phi']['std']]),
+                torch.Tensor([normalise_params['normalisation_Phi'][int(args.fold)]['mean']]),
+                torch.Tensor([normalise_params['normalisation_Phi'][int(args.fold)]['std']]),
                 sigma_data=args.std_data,
             )
     x_transform = transforms.Compose([

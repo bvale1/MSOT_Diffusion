@@ -59,22 +59,21 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%y-%m-%d %H:%M:%S')
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str,
-        #default='20250716_ImageNet_MSOT_Dataset'
-        default='20250716_digimouse_MSOT_Dataset'
-        #default='20250327_ImageNet_MSOT_Dataset'
-        #default='20250327_digimouse_MSOT_Dataset'
-        #default='20250327_digimouse_extrusion_MSOT_Dataset'
+        default='20260522_ImageNet_MSOT_Dataset'
+        #default='20260522_digimouse_MSOT_Dataset'
+        #default='20260522_digimouse_extrusion_MSOT_Dataset'
     )
     parser.add_argument('--root_dir', type=str,
         #default = '/mnt/e/ImageNet_MSOT_simulations_noPositivityConstraint' # from wsl
-        default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse_no_positivity_constraint'
-        #default = '/mnt/f/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse_no_positivity_constraint'
+        default='/media/billy/Seagate Hub/ImageNet_fluence_correction'
+        #default = '/media/billy/Seagate Hub/cluster_MSOT_simulations/digimouse_fluence_correction/3d_digimouse_no_positivity_constraint'
+        #default = '/media/billy/Seagate Hub/cluster_MSOT_simulations/digimouse_fluence_correction/2d_extrusion_digimouse_no_positivity_constraint'
     )
     parser.add_argument('--output_dir', type=str, default='')
     parser.add_argument('--git_hash', type=str, default=None)
     parser.add_argument(
         '--delete_failed_samples', action='store_true', default=False, 
-        help='delete samples that do not pass the vibe check (sanity checks)'
+        help='delete samples that do not pass sanity checks'
     )
     parser.add_argument(
         '--X_key', type=str, #default='p0_tr',
@@ -99,40 +98,33 @@ if __name__ == '__main__':
         'n_images': 0,
         'dx' : 0.0001,
         'crop_size' : 256,
-        #'train_val_test_split' : [0.8, 0.1, 0.1], # 80% train, 10% val, 10% test
-        'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
-        #'folds' : 5,
-        'folds' : 1,
+        'train_val_test_split' : [0.8, 0.1, 0.1], # 80% train, 10% val, 10% test
+        #'train_val_test_split' : [0.0, 0.0, 1.0], # use all data for testing
+        'folds' : 5,
+        #'folds' : 1,
         'units' : {
             'X' : 'Pa J^-1', 'Phi' : 'm^-2', 
             #'corrected_image' : 'm^-1 J^-1',
             'mu_a' : 'm^-1'
         },
-        'normalisation_X': {
-            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        },
-        'normalisation_Phi': {
-            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        },
-        #'normalisation_corrected_image': {
-        #    'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        #},
-        'normalisation_mu_a': {
-            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        }
     }
     if args.include_sensor_data:
         dataset_cfg['units']['sensor_data'] = 'arbitrary units'
         dataset_cfg['include_sensor_data'] = True
-        dataset_cfg['normalisation_sensor_data'] = {
-            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        }
     if args.include_scattering_coefficient:
         dataset_cfg['units']['mu_s'] = 'm^-1'
         dataset_cfg['include_scattering_coefficient'] = True
-        dataset_cfg['normalisation_mu_s'] = {
-            'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0
-        }
+    # per-fold normalisation params — computed from each fold's training split only
+    _norm_keys = ['normalisation_X', 'normalisation_Phi', 'normalisation_mu_a']
+    if args.include_sensor_data:
+        _norm_keys.append('normalisation_sensor_data')
+    if args.include_scattering_coefficient:
+        _norm_keys.append('normalisation_mu_s')
+    for _key in _norm_keys:
+        dataset_cfg[_key] = [
+            {'min': 0.0, 'max': 0.0, 'mean': 0.0, 'std': 0.0}
+            for _ in range(dataset_cfg['folds'])
+        ]
     if (dataset_cfg['train_val_test_split'][1]+dataset_cfg['train_val_test_split'][2]) * dataset_cfg['folds'] > 1.0:
         raise ValueError(f'Not enough samples for {dataset_cfg['folds']} folds with train_test_split={dataset_cfg['train_val_test_split']}')
     
@@ -287,27 +279,6 @@ if __name__ == '__main__':
                     delete_group_from_h5(file_path=sim, group_name=image)
                 continue
                 
-            dataset_cfg['normalisation_X']['max'] = max(dataset_cfg['normalisation_X']['max'], float(np.max(X)))
-            dataset_cfg['normalisation_X']['min'] = min(dataset_cfg['normalisation_X']['min'], float(np.min(X)))
-            dataset_cfg['normalisation_X']['mean'] += float(np.mean(X) / n_images)
-            dataset_cfg['normalisation_Phi']['max'] = max(dataset_cfg['normalisation_Phi']['max'], float(np.max(Phi)))
-            dataset_cfg['normalisation_Phi']['min'] = min(dataset_cfg['normalisation_Phi']['min'], float(np.min(Phi)))
-            dataset_cfg['normalisation_Phi']['mean'] += float(np.mean(Phi) / n_images)
-            #dataset_cfg['normalisation_corrected_image']['max'] = max(dataset_cfg['normalisation_corrected_image']['max'], float(np.max(corrected_image)))
-            #dataset_cfg['normalisation_corrected_image']['min'] = min(dataset_cfg['normalisation_corrected_image']['min'], float(np.min(corrected_image)))
-            #dataset_cfg['normalisation_corrected_image']['mean'] += float(np.mean(corrected_image) / n_images)
-            dataset_cfg['normalisation_mu_a']['max'] = max(dataset_cfg['normalisation_mu_a']['max'], float(np.max(mu_a)))
-            dataset_cfg['normalisation_mu_a']['min'] = min(dataset_cfg['normalisation_mu_a']['min'], float(np.min(mu_a)))
-            dataset_cfg['normalisation_mu_a']['mean'] += float(np.mean(mu_a) / n_images)
-            if args.include_sensor_data:
-                dataset_cfg['normalisation_sensor_data']['max'] = max(dataset_cfg['normalisation_sensor_data']['max'], float(np.max(sensor_data)))
-                dataset_cfg['normalisation_sensor_data']['min'] = min(dataset_cfg['normalisation_sensor_data']['min'], float(np.min(sensor_data)))
-                dataset_cfg['normalisation_sensor_data']['mean'] += float(np.mean(sensor_data) / n_images)
-            if args.include_scattering_coefficient:
-                dataset_cfg['normalisation_mu_s']['max'] = max(dataset_cfg['normalisation_mu_s']['max'], float(np.max(mu_s)))
-                dataset_cfg['normalisation_mu_s']['min'] = min(dataset_cfg['normalisation_mu_s']['min'], float(np.min(mu_s)))
-                dataset_cfg['normalisation_mu_s']['mean'] += float(np.mean(mu_s) / n_images)
-            
             with h5py.File(file_path, 'r+') as f:
                 image_group = f['samples'].require_group(image)
                 image_group.create_dataset('X', data=X, dtype=np.float32)
@@ -322,35 +293,71 @@ if __name__ == '__main__':
                 if args.include_scattering_coefficient:
                     image_group.create_dataset('mu_s', data=mu_s, dtype=np.float32)
                 
-    ssr_X = 0.0
-    ssr_phi = 0.0
-    #ssr_corrected_image = 0.0
-    ssr_mu_a = 0.0
-    ssr_sensor_data = 0.0
-    ssr_mu_s = 0.0
-    
-    # calculate standard deviation
-    logging.info(f'Calculating standard deviations')
+    # calculate per-fold normalisation parameters using only each fold's training split
+    logging.info('Calculating per-fold normalisation parameters from training splits only')
     with h5py.File(file_path, 'r') as f:
-        for i, image in enumerate(list(f['samples'].keys())):
-            denomitator = np.prod(f['samples'][image]['X'].shape) * n_images - 1
-            ssr_X += np.sum((f['samples'][image]['X'][()] - dataset_cfg['normalisation_X']['mean'])**2) / denomitator
-            ssr_phi += np.sum((f['samples'][image]['Phi'][()] - dataset_cfg['normalisation_Phi']['mean'])**2) / denomitator
-            #ssr_corrected_image += np.sum((f['samples'][image]['corrected_image'][()] - dataset_cfg['normalisation_corrected_image']['mean'])**2) / denomitator
-            ssr_mu_a += np.sum((f['samples'][image]['mu_a'][()] - dataset_cfg['normalisation_mu_a']['mean'])**2) / denomitator
+        for fold in range(dataset_cfg['folds']):
+            train_names = [
+                n.decode() if isinstance(n, bytes) else n
+                for n in f['train'][str(fold)]['sample_names'][()]
+            ]
+            n_train = len(train_names)
+            if n_train == 0:
+                logging.warning(f'Fold {fold} has no training samples, skipping normalisation')
+                continue
+            logging.info(f'Fold {fold}: computing normalisation over {n_train} training samples')
+
+            # first pass: mean, min, max
+            for name in train_names:
+                X = f['samples'][name]['X'][()]
+                Phi = f['samples'][name]['Phi'][()]
+                mu_a = f['samples'][name]['mu_a'][()]
+                dataset_cfg['normalisation_X'][fold]['max'] = max(dataset_cfg['normalisation_X'][fold]['max'], float(np.max(X)))
+                dataset_cfg['normalisation_X'][fold]['min'] = min(dataset_cfg['normalisation_X'][fold]['min'], float(np.min(X)))
+                dataset_cfg['normalisation_X'][fold]['mean'] += float(np.mean(X) / n_train)
+                dataset_cfg['normalisation_Phi'][fold]['max'] = max(dataset_cfg['normalisation_Phi'][fold]['max'], float(np.max(Phi)))
+                dataset_cfg['normalisation_Phi'][fold]['min'] = min(dataset_cfg['normalisation_Phi'][fold]['min'], float(np.min(Phi)))
+                dataset_cfg['normalisation_Phi'][fold]['mean'] += float(np.mean(Phi) / n_train)
+                dataset_cfg['normalisation_mu_a'][fold]['max'] = max(dataset_cfg['normalisation_mu_a'][fold]['max'], float(np.max(mu_a)))
+                dataset_cfg['normalisation_mu_a'][fold]['min'] = min(dataset_cfg['normalisation_mu_a'][fold]['min'], float(np.min(mu_a)))
+                dataset_cfg['normalisation_mu_a'][fold]['mean'] += float(np.mean(mu_a) / n_train)
+                if args.include_sensor_data:
+                    sensor_data = f['samples'][name]['sensor_data'][()]
+                    dataset_cfg['normalisation_sensor_data'][fold]['max'] = max(dataset_cfg['normalisation_sensor_data'][fold]['max'], float(np.max(sensor_data)))
+                    dataset_cfg['normalisation_sensor_data'][fold]['min'] = min(dataset_cfg['normalisation_sensor_data'][fold]['min'], float(np.min(sensor_data)))
+                    dataset_cfg['normalisation_sensor_data'][fold]['mean'] += float(np.mean(sensor_data) / n_train)
+                if args.include_scattering_coefficient:
+                    mu_s = f['samples'][name]['mu_s'][()]
+                    dataset_cfg['normalisation_mu_s'][fold]['max'] = max(dataset_cfg['normalisation_mu_s'][fold]['max'], float(np.max(mu_s)))
+                    dataset_cfg['normalisation_mu_s'][fold]['min'] = min(dataset_cfg['normalisation_mu_s'][fold]['min'], float(np.min(mu_s)))
+                    dataset_cfg['normalisation_mu_s'][fold]['mean'] += float(np.mean(mu_s) / n_train)
+
+            # second pass: std
+            ssr_X = ssr_Phi = ssr_mu_a = ssr_sensor_data = ssr_mu_s = 0.0
+            for name in train_names:
+                X = f['samples'][name]['X'][()]
+                Phi = f['samples'][name]['Phi'][()]
+                mu_a = f['samples'][name]['mu_a'][()]
+                denom = np.prod(X.shape) * n_train - 1
+                ssr_X += np.sum((X - dataset_cfg['normalisation_X'][fold]['mean'])**2) / denom
+                ssr_Phi += np.sum((Phi - dataset_cfg['normalisation_Phi'][fold]['mean'])**2) / denom
+                ssr_mu_a += np.sum((mu_a - dataset_cfg['normalisation_mu_a'][fold]['mean'])**2) / denom
+                if args.include_sensor_data:
+                    sensor_data = f['samples'][name]['sensor_data'][()]
+                    denom_sd = np.prod(sensor_data.shape) * n_train - 1
+                    ssr_sensor_data += np.sum((sensor_data - dataset_cfg['normalisation_sensor_data'][fold]['mean'])**2) / denom_sd
+                if args.include_scattering_coefficient:
+                    mu_s = f['samples'][name]['mu_s'][()]
+                    ssr_mu_s += np.sum((mu_s - dataset_cfg['normalisation_mu_s'][fold]['mean'])**2) / denom
+
+            dataset_cfg['normalisation_X'][fold]['std'] = float(np.sqrt(ssr_X))
+            dataset_cfg['normalisation_Phi'][fold]['std'] = float(np.sqrt(ssr_Phi))
+            dataset_cfg['normalisation_mu_a'][fold]['std'] = float(np.sqrt(ssr_mu_a))
             if args.include_sensor_data:
-                ssr_sensor_data += np.sum((f['samples'][image]['sensor_data'][()] - dataset_cfg['normalisation_sensor_data']['mean'])**2) / denomitator
+                dataset_cfg['normalisation_sensor_data'][fold]['std'] = float(np.sqrt(ssr_sensor_data))
             if args.include_scattering_coefficient:
-                ssr_mu_s += np.sum((f['samples'][image]['mu_a'][()] - dataset_cfg['normalisation_mu_s']['mean'])**2) / denomitator
-                
-    dataset_cfg['normalisation_X']['std'] = float(np.sqrt(ssr_X))
-    dataset_cfg['normalisation_Phi']['std'] = float(np.sqrt(ssr_phi))
-    #dataset_cfg['normalisation_corrected_image']['std'] = float(np.sqrt(ssr_corrected_image))
-    dataset_cfg['normalisation_mu_a']['std'] = float(np.sqrt(ssr_mu_a))
-    if args.include_sensor_data:
-        dataset_cfg['normalisation_sensor_data']['std'] = float(np.sqrt(ssr_sensor_data))
-    if args.include_scattering_coefficient:
-        dataset_cfg['normalisation_mu_s']['std'] = float(np.sqrt(ssr_mu_s))
+                dataset_cfg['normalisation_mu_s'][fold]['std'] = float(np.sqrt(ssr_mu_s))
+            logging.info(f'Fold {fold} normalisation_X: {dataset_cfg["normalisation_X"][fold]}')
     
     print(f'dataset_cfg {dataset_cfg}')
     

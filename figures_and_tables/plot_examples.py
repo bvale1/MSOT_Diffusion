@@ -4,6 +4,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from compute_outputs import compute_outputs
 
+plt.rcParams["font.family"] = "Arial"
+plt.rcParams["mathtext.fontset"] = "cm"
+
 save_dir = 'examples_with_pretrained_and_not_pretrained_models'
 models_dirs = [
     ('Not pre-trained', '20250430_UNet_e2eQPAT.Naisurrey26.j783005/RegressionUNet_epoch199.pt'),
@@ -112,6 +115,6 @@ for i in range(len(sample_indices)):
     ax.set_axisbelow(True)
     ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.01))
     fig.tight_layout()
-    fig.savefig(f'line_profile_{i}.png')
+    fig.savefig(f'line_profile_{i}.pdf', bbox_inches='tight', format='pdf', dpi=600)
     
     plt.close('all')
