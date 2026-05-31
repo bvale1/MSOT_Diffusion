@@ -35,6 +35,8 @@ if __name__ == '__main__':
     logging.info(f'cuDNN benchmark: {torch.torch.backends.cudnn.benchmark}')
     
     args, var_args = uf.get_config()
+    var_args['wandb_id'] = None  # populated from args.json on resume, or set after wandb.init
+    resume_state = uf.load_resume_state(args, var_args)
 
     if args.seed:
         seed = args.seed
@@ -115,16 +117,6 @@ if __name__ == '__main__':
                 #channel_mult=[1,2,4,8,16],
                 channel_mult=[1,2,3,4,8],
             )
-        case 'Swin_UNet':
-            model = SwinTransformerSys(
-                img_size=image_size[0], patch_size=4, in_chans=channels, num_classes=out_channels,
-                embed_dim=96, depths=[2, 2, 2, 2], depths_decoder=[1, 2, 2, 2], num_heads=[3, 6, 12, 24],
-                window_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
-                drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
-                norm_layer=nn.LayerNorm, ape=False, patch_norm=False,
-                final_upsample="expand_first"
-            )
-            uf.remove_softmax(model)
         case 'EDM2':
             attn_resolutions = [16, 8] if args.attention else []
             label_dim = 1000 if args.wl_conditioning else 0
@@ -138,7 +130,13 @@ if __name__ == '__main__':
             if not args.attention:
                 uf.remove_attention(model.unet)
 
-    if args.load_checkpoint_dir:
+    if args.resume_training_from:
+        resume_ckpt = torch.load(
+            os.path.join(args.resume_training_from, 'latest_checkpoint.pt'), weights_only=False
+        )
+        model.load_state_dict(resume_ckpt['model_state_dict'], strict=False)
+        logging.info(f'loaded latest checkpoint from {args.resume_training_from}')
+    elif args.load_checkpoint_dir:
         model.load_state_dict(
             torch.load(args.load_checkpoint_dir, weights_only=True), strict=False
         )
@@ -197,6 +195,9 @@ if __name__ == '__main__':
         )
     else:
         ema = PowerFunctionEMA(model, stds=[0.05, 0.1])
+        if args.resume_training_from and 'ema_state_dict' in resume_ckpt:
+            ema.load_state_dict(resume_ckpt['ema_state_dict'])
+            logging.info('restored EMA state from latest checkpoint')
         optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.99))
 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -208,6 +209,8 @@ if __name__ == '__main__':
         )
     if args.save_dir:
         checkpointer = uc.CheckpointSaver(args.save_dir, top_n=1)
+        if args.wandb_log and wandb.run:
+            var_args['wandb_id'] = wandb.run.id
         with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
             json.dump(var_args, f, indent=4)
     
@@ -220,8 +223,10 @@ if __name__ == '__main__':
         case 'both':
             train_loader = dataloaders['combined']['train']
     
-    cur_nimg = 0 # needed for EDM2 lr scheduler and EMA update
-    for epoch in range(args.epochs):
+    cur_nimg = resume_state.get('cur_nimg', 0)
+    start_epoch = resume_state.get('start_epoch', 0)
+    module = model  # default; overwritten each validation step for EDM2
+    for epoch in range(start_epoch, args.epochs):
         # ==================== Train epoch ====================
         model.train()
         total_train_loss = 0
@@ -373,9 +378,24 @@ if __name__ == '__main__':
         if args.wandb_log:
             wandb.log({'lr' : optimizer.param_groups[0]['lr'],
                        'mean_train_loss' : total_train_loss/len(train_loader)})
-        
-    
+
+        if args.save_dir:
+            save_ckpt = {'model_state_dict': model.state_dict()}
+            if args.model in ['EDM2', 'unet_diffusion_ablation']:
+                save_ckpt['ema_state_dict'] = ema.state_dict()
+            torch.save(save_ckpt, os.path.join(checkpointer.dirpath, 'latest_checkpoint.pt'))
+            var_args['last_completed_epoch'] = epoch
+            var_args['cur_nimg'] = cur_nimg
+            with open(os.path.join(checkpointer.dirpath, 'args.json'), 'w') as f:
+                json.dump(var_args, f, indent=4)
+
+
     # ==================== Testing ====================
+    if args.skip_test:
+        logging.info('skipping testing (--skip_test set)')
+        if args.wandb_log:
+            wandb.finish()
+        exit(0)
     logging.info('loading checkpoint with best validation loss for testing')
     checkpointer.load_best_model(model)
     model.eval()

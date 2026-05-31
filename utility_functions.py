@@ -43,6 +43,8 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--boft_rank', type=int, default=0, help='rank for butterfly orthogonal fine tuning layers, 0 means no BOFT')
     parser.add_argument('--wl_conditioning', default=False, help='use wavelength conditioning in diffusion models', action='store_true')
     parser.add_argument('--l2_regularisation', type=float, default=0.0, help='weight for L2 regularisation loss term')
+    parser.add_argument('--skip_test', default=False, action='store_true', help='skip testing and example saving at the end of training (use on all but the final job when splitting training across jobs)')
+    parser.add_argument('--resume_training_from', type=str, default=None, help='path to a previous save_dir; loads latest_checkpoint.pt and reads args.json to restore all args, epoch, cur_nimg, and wandb run')
 
     args = parser.parse_args()
     var_args = vars(args)
@@ -232,8 +234,10 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}', 
-            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
+            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}',
+            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes,
+            id=args.wandb_id if args.wandb_id else None,
+            resume='must' if args.wandb_id else None,
         )
     
     with open(os.path.join(args.synthetic_root_dir, 'config.json'), 'r') as f:
@@ -283,13 +287,15 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
 
 
 def create_e2eQPAT_dataloaders(args : argparse.Namespace,
-                               model_name : str, 
+                               model_name : str,
                                stats_path : str) -> tuple:
     if args.wandb_log and not wandb.run:
         wandb.login()
         wandb.init(
-            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}', 
-            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes
+            project='MSOT_Diffusion2', name=f'{model_name}_fold{args.fold}',
+            save_code=True, reinit=True, config=vars(args), notes=args.wandb_notes,
+            id=args.wandb_id if args.wandb_id else None,
+            resume='must' if args.wandb_id else None,
         )
     
     with open(stats_path, 'r') as f:
@@ -445,7 +451,7 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
         have the same length.'
     if not fig_titles:
         fig_titles = [f'Example {i}' for i in range(len(X))]
-        
+
     for i in range(len(X)):
         (fig, _) = dataset.plot_comparison(
             X[i], Y[i], Y_hat[i], X_hat=X_hat[i], mask=mask[i],
@@ -457,3 +463,23 @@ def plot_test_examples(dataset : ReconstructAbsorbtionDataset,
         if args.save_dir:
             fig.savefig(os.path.join(dirpath, fig_titles[i]+'.png'))
         plt.close(fig)
+
+
+def load_resume_state(args : argparse.Namespace, var_args : dict) -> dict:
+    resume_state = {}
+    if not args.resume_training_from:
+        return resume_state
+    with open(os.path.join(args.resume_training_from, 'args.json')) as f:
+        prev_args = json.load(f)
+    resume_state['start_epoch'] = prev_args.get('last_completed_epoch', -1) + 1
+    resume_state['cur_nimg'] = prev_args.get('cur_nimg', 0)
+    _resume_training_from = args.resume_training_from
+    _skip_test = args.skip_test
+    _epochs = args.epochs
+    var_args.update(prev_args)
+    var_args['resume_training_from'] = _resume_training_from
+    var_args['skip_test'] = _skip_test
+    var_args['epochs'] = _epochs
+    var_args['save_dir'] = _resume_training_from
+    logging.info(f'resuming from epoch {resume_state["start_epoch"]} in {_resume_training_from}')
+    return resume_state

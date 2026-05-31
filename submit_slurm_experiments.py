@@ -4,10 +4,23 @@ import itertools
 import textwrap
 from datetime import datetime
 
-root_dir = 'preprocessing/20240517_BphP_cylinders_no_noise/'
+pretrained_edm2=(
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010491/Precond_epoch929.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010492/Precond_epoch979.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010493/Precond_epoch959.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010494/Precond_epoch939.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey24.j2010490/Precond_epoch929.pt" 
+)
+pretrained_unet_e2eqpat=(
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017600/RegressionUNet_epoch123.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017612/RegressionUNet_epoch105.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey26.j2017617/RegressionUNet_epoch198.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017653/RegressionUNet_epoch160.pt"  
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017599/RegressionUNet_epoch198.pt" 
+)
 
-#MODELS = ['UNet-e2eQPAT','EDM2','UNet_diffusion_ablation']
-MODELS = ['UNet-e2eQPAT']
+#MODELS = ['UNet_e2eQPAT','EDM2','UNet_diffusion_ablation']
+MODELS = ['UNet_e2eQPAT']
 
 #FOLDS = [0, 1, 2, 3, 4]
 #FOLDS = [1, 2, 3, 4]
@@ -33,21 +46,56 @@ experiment = "ImageNet_pretrain"
 #experiment = "experimental_from_scratch"
 #experiment = "experimental_fine_tune"
 
+# --- Multi-job (checkpoint) settings ---
+# For the FIRST job of a multi-job run: set skip_test=True.
+# For the LAST job: set resume_from to the previous job's save_dir (the full path
+# including the .N<node>.j<jobid> suffix), set skip_test=False.
+# Leave both at their defaults for a normal single-job run.
+resume_from = None   # e.g. "/mnt/.../20260531_UNet_e2eQPAT.Naisurrey25.j1234567"
+skip_test = False    # set True on all but the final job
+
 save_dirs = {
     'EDM2': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_EDM2",
-    'UNet-e2eQPAT': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_e2eQPAT",
+    'UNet_e2eQPAT': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_e2eQPAT",
     'UNet_wl_pos_emb': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_wl_pos_emb",
     'UNet_diffusion_ablation': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_diffusion_ablation"
 }
 
 for model, fold in itertools.product(MODELS, FOLDS):
-    memory = '32G' if model == 'UNet-e2eQPAT' else '64G'
-    partition = '3090' if model == 'UNet-e2eQPAT' else 'a100'
-    time_limit = '00-06:00:00' if model == 'UNet-e2eQPAT' else '00-72:00:00'
+    memory = '32G' if model == 'UNet_e2eQPAT' else '64G'
+    partition = '3090' if model == 'UNet_e2eQPAT' else 'a100'
+    time_limit = '00-06:00:00' if model == 'UNet_e2eQPAT' else '00-72:00:00'
     synthetic_or_experimental = 'experimental' if experiment in ['experimental_from_scratch', 'experimental_fine_tune'] else 'synthetic'
     synthetic_dataset = 'Digimouse' if experiment in ['Digimouse_test'] else ('Digimouse_extrusion' if experiment in ['Digimouse_extrusion_test'] else 'ImageNet')
     epochs = '1000' if model == 'EDM2' else '200'
     wandb_notes = f"{experiment}_{model}_fold{fold}"
+    if experiment in ['experimental_fine_tune', 'digimouse_test', 'digimouse_extrusion_test']:
+        load_checkpoint_dir = pretrained_edm2[fold] if model == 'EDM2' else pretrained_unet_e2eqpat[fold]
+    else:
+        load_checkpoint_dir = None
+
+    command_lines = [
+        "apptainer exec oras://container-registry.surrey.ac.uk/shared-containers/billy-msot_diffusion-container:latest",
+        "python3 clone_and_run_msot_diffusion.py",
+        "--cluster_id .N$SLURM_JOB_NODELIST.j$SLURM_JOB_ID",
+        f"--save_dir {save_dirs[model]}",
+        f"--synthetic_or_experimental {synthetic_or_experimental}",
+        f"--synthetic_root_dir {DATASETS[synthetic_dataset]}",
+        f"--experimental_root_dir {DATASETS['e2eQPAT']}",
+        f"--epochs {epochs}",
+        f"--model {model}",
+        "--data_normalisation standard",
+        f"--fold {fold}",
+        f"--wandb_notes {wandb_notes}",
+    ]
+    if load_checkpoint_dir:
+        command_lines.append(f"--load_checkpoint_dir {load_checkpoint_dir}")
+    if resume_from:
+        command_lines.append(f"--resume_training_from {resume_from}")
+    if skip_test:
+        command_lines.append("--skip_test")
+
+    command_block = " \\\n".join(f"    {line}" for line in command_lines)
 
     sub_file = textwrap.dedent(f"""
     #!/bin/bash
@@ -75,18 +123,7 @@ for model, fold in itertools.product(MODELS, FOLDS):
     #SBATCH -e slurm.%j.%N.err
 
     ### Apptainer execution ###
-    apptainer exec oras://container-registry.surrey.ac.uk/shared-containers/billy-msot_diffusion-container:latest \
-    python3 clone_and_run_msot_diffusion.py \
-    --cluster_id .N$SLURM_JOB_NODELIST.j$SLURM_JOB_ID \
-    --save_dir {save_dirs[model]} \
-    --synthetic_or_experimental "{synthetic_or_experimental}" \
-    --synthetic_root_dir {DATASETS[synthetic_dataset]} \
-    --experimental_root_dir {DATASETS['e2eQPAT']} \
-    --epochs {epochs} \
-    --model {model} \
-    --data_normalisation "standard" \
-    --fold {fold} \
-    --wandb_notes {wandb_notes}
+{command_block}
     EOF
     """).strip() + "\n"
 
@@ -94,5 +131,5 @@ for model, fold in itertools.product(MODELS, FOLDS):
     with open(submit_script_path, 'w', encoding='utf-8') as f:
         f.write(sub_file)
     os.chmod(submit_script_path, 0o755)
-    subprocess.run(['sbatch', submit_script_path], check=True)
+    #subprocess.run(['sbatch', submit_script_path], check=True)
     
