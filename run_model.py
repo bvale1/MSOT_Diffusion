@@ -25,7 +25,7 @@ from epoch_steps import *
 from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
 
 # An all purpose script for training, validating and testing models
-# to test a trained model set --epochs 0 and --load_checkpoint_dir to the path of the model checkpoint
+# to test a trained model set --epochs 0 and --load_best_checkpoint_from to the checkpoint directory
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
@@ -136,11 +136,10 @@ if __name__ == '__main__':
         )
         model.load_state_dict(resume_ckpt['model_state_dict'], strict=False)
         logging.info(f'loaded latest checkpoint from {args.resume_training_from}')
-    elif args.load_checkpoint_dir:
+    elif args.load_best_checkpoint_from:
         model.load_state_dict(
-            torch.load(args.load_checkpoint_dir, weights_only=True), strict=False
+            uf.load_best_checkpoint_from(args.load_best_checkpoint_from), strict=False
         )
-        logging.info(f'loaded checkpoint: {args.load_checkpoint_dir}')
     
     if args.freeze_encoder:
         logging.info('freezing encoder')

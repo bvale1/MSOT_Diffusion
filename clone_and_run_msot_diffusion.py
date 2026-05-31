@@ -18,7 +18,7 @@ parser.add_argument('--model', type=str, choices=['UNet_e2eQPAT', 'UNet_diffusio
 parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
 parser.add_argument('--fold', type=str, choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
 parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
-parser.add_argument('--load_checkpoint_dir', type=str, default=None, help='path to load a model checkpoint')
+parser.add_argument('--load_best_checkpoint_from', type=str, default=None, help='path to load a model checkpoint')
 parser.add_argument('--boft_rank', type=str, default='0', help='rank for butterfly orthogonal fine tuning layers, 0 means no BOFT')
 parser.add_argument('--git_hash', type=str, default=None, help='specifiy an older version of the codebase')
 parser.add_argument('--l2_regularisation', type=str, default='0.0', help='weight for L2 regularisation loss term')
@@ -89,8 +89,8 @@ cmd = [
     '--l2_regularisation', args.l2_regularisation
 ]
 
-if args.load_checkpoint_dir:
-    cmd.extend(['--load_checkpoint_dir', args.load_checkpoint_dir])
+if args.load_best_checkpoint_from:
+    cmd.extend(['--load_best_checkpoint_from', args.load_best_checkpoint_from])
 if args.wl_conditioning:
     cmd.extend(['--wl_conditioning'])
 if args.resume_training_from:

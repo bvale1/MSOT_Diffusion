@@ -5,18 +5,18 @@ import textwrap
 from datetime import datetime
 
 pretrained_edm2=(
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010491/Precond_epoch929.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010492/Precond_epoch979.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010493/Precond_epoch959.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010494/Precond_epoch939.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey24.j2010490/Precond_epoch929.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010491"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010492"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010493"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010494"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey24.j2010490"
 )
 pretrained_unet_e2eqpat=(
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017600/RegressionUNet_epoch123.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017612/RegressionUNet_epoch105.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey26.j2017617/RegressionUNet_epoch198.pt" 
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017653/RegressionUNet_epoch160.pt"  
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017599/RegressionUNet_epoch198.pt" 
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017600"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017612"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey26.j2017617"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017653"
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017599"
 )
 
 #MODELS = ['UNet_e2eQPAT','EDM2','UNet_diffusion_ablation']
@@ -70,9 +70,9 @@ for model, fold in itertools.product(MODELS, FOLDS):
     epochs = '1000' if model == 'EDM2' else '200'
     wandb_notes = f"{experiment}_{model}_fold{fold}"
     if experiment in ['experimental_fine_tune', 'digimouse_test', 'digimouse_extrusion_test']:
-        load_checkpoint_dir = pretrained_edm2[fold] if model == 'EDM2' else pretrained_unet_e2eqpat[fold]
+        load_best_checkpoint_from = pretrained_edm2[fold] if model == 'EDM2' else pretrained_unet_e2eqpat[fold]
     else:
-        load_checkpoint_dir = None
+        load_best_checkpoint_from = None
 
     command_lines = [
         "apptainer exec oras://container-registry.surrey.ac.uk/shared-containers/billy-msot_diffusion-container:latest",
@@ -88,8 +88,8 @@ for model, fold in itertools.product(MODELS, FOLDS):
         f"--fold {fold}",
         f"--wandb_notes {wandb_notes}",
     ]
-    if load_checkpoint_dir:
-        command_lines.append(f"--load_checkpoint_dir {load_checkpoint_dir}")
+    if load_best_checkpoint_from:
+        command_lines.append(f"--load_best_checkpoint_from {load_best_checkpoint_from}")
     if resume_from:
         command_lines.append(f"--resume_training_from {resume_from}")
     if skip_test:
