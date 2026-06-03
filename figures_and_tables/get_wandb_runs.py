@@ -7,6 +7,7 @@ import numpy as np
 from dotenv import load_dotenv
 from copy import deepcopy
 
+EXPERIMENTS = [
 
 MODELS = [
     'UNet-e2eQPAT',
