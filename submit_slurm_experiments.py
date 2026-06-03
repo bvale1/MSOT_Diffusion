@@ -149,7 +149,6 @@ for model, fold in itertools.product(MODELS, FOLDS):
 
     ### Apptainer execution ###
 {command_block}
-    EOF
     """).strip() + "\n"
 
     submit_script_path = 'submit_MSOT_Diffusion.sh'

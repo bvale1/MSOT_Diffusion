@@ -27,7 +27,7 @@ parser.add_argument('--skip_test', default=False, action='store_true', help='ski
 parser.add_argument('--resume_training_from', type=str, default=None, help='path to a previous save_dir to resume training from')
 args = parser.parse_args()
 # ARGUMENTS
-save_dir = args.save_dir + args.cluster_id
+save_dir = args.resume_training_from if args.resume_training_from else args.save_dir + args.cluster_id
 
 lr = '1e-3' if args.synthetic_or_experimental == 'synthetic' else '1e-4'
 image_size = '256' if args.synthetic_or_experimental == 'synthetic' else '288'
@@ -41,10 +41,12 @@ if not os.path.exists(save_dir):
 os.chdir(save_dir)
 
 # CLONE LATEST FROM REPO
-#subprocess.run(['rm', '-rf', 'MSOT_diffusion'])
-subprocess.run(
-    ['git', 'clone', '--recurse-submodules', '-b', 'main', 'git@github.com:bvale1/MSOT_diffusion.git']
-)
+if os.path.exists('MSOT_diffusion'):
+    subprocess.run(['git', '-C', 'MSOT_diffusion', 'pull', '--recurse-submodules'])
+else:
+    subprocess.run(
+        ['git', 'clone', '--recurse-submodules', '-b', 'main', 'git@github.com:bvale1/MSOT_diffusion.git']
+    )
 if args.git_hash is not None:
     subprocess.run(['git', '-C', 'MSOT_diffusion', 'checkout', args.git_hash])
     subprocess.run(['git', '-C', 'MSOT_diffusion', 'submodule', 'update', '--init', '--recursive'])
