@@ -413,13 +413,6 @@ if __name__ == '__main__':
             logging_prefix='synthetic_test', dataloader_len=len(dataloaders['synthetic']['test'])
         )
     
-    if args.save_dir and args.epochs > 0:
-        torch.save(
-            model.state_dict(), 
-            os.path.join(
-                checkpointer.dirpath, model.__class__.__name__ + f'_epoch{epoch}.pt'
-            )
-        )
         
     # to study overfitting, sample all images from the training set and calculate the loss
     # use model at test epoch with zero grad to get an unbiased estimate of the training loss
