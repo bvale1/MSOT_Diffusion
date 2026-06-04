@@ -95,14 +95,15 @@ def test_epoch(args : arpgparse.Namespace,
             match args.model:
                 case 'UNet_e2eQPAT':
                     Y_hat = module(X)
-                case 'UNet_wl_pos_emb':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    Y_hat = module(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
-                    Y_hat = module(X)
+                    if args.wl_conditioning:
+                        wavelength_nm_onehot = torch.zeros(
+                            (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                        )
+                        wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                        Y_hat = module(X, class_labels=wavelength_nm_onehot)
+                    else:
+                        Y_hat = module(X)
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device

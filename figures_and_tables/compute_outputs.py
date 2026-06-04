@@ -4,11 +4,10 @@ import os
 import argparse
 import sys
 
-import denoising_diffusion_pytorch as ddp
-
 sys.path.append('/'.join(os.path.abspath(__file__).split('/')[:-2]))
 import utility_functions as uf
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
+from edm2.training.networks_edm2 import UNet as EDM2_UNet
 
 
 def compute_outputs(models_dirs, sample_indices):
@@ -53,11 +52,15 @@ def compute_outputs(models_dirs, sample_indices):
                     in_channels=channels, out_channels=out_channels,
                     initial_filter_size=64, kernel_size=3
                 )
-            case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
-                model = ddp.Unet(
-                    dim=32, channels=channels, out_dim=out_channels,
-                    self_condition=False, image_condition=False, full_attn=False,
-                    flash_attn=False, learned_sinusoidal_cond=False
+            case 'UNet_diffusion_ablation':
+                model = EDM2_UNet(
+                    img_resolution=256,
+                    img_channels_in=channels,
+                    img_channels_out=out_channels,
+                    label_dim=1000 if args.wl_conditioning else 0,
+                    model_channels=64,
+                    attn_resolutions=[16, 8] if args.attention else [],
+                    noise_emb=False,
                 )
         
         model.load_state_dict(torch.load(dir, weights_only=True))
@@ -83,10 +86,15 @@ def compute_outputs(models_dirs, sample_indices):
             match args.model:
                 case 'UNet_e2eQPAT':
                     Y_hat = model(X)
-                case 'UNet_wl_pos_emb':
-                    Y_hat = model(X, wavelength_nm.squeeze())
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X, torch.zeros(wavelength_nm.shape[0], device=device))
+                    if args.wl_conditioning:
+                        wavelength_nm_onehot = torch.zeros(
+                            (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                        )
+                        wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                        Y_hat = model(X, class_labels=wavelength_nm_onehot)
+                    else:
+                        Y_hat = model(X)
         
         mu_a_hat = Y_hat[:, 0:1]
         outputs_dict[model_name]['X'] = transforms_dict[args.synthetic_or_experimental]['normalise_x'].inverse(X.cpu()).squeeze().numpy()

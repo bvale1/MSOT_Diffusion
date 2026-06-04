@@ -8,10 +8,17 @@ from dotenv import load_dotenv
 from copy import deepcopy
 
 EXPERIMENTS = [
+    "ImageNet_pretrain",
+    "Digimouse_test",
+    "Digimouse_extrusion_test",
+    "experimental_from_scratch",
+    "experimental_fine_tune",
+]
 
 MODELS = [
-    'UNet-e2eQPAT',
+    'UNet_e2eQPAT',
     'EDM2',
+    'UNet_diffusion_ablation',
 ]
 
 METRICS = [
@@ -52,18 +59,24 @@ FILTER = {"state": "finished"}  # You can use {"state": "finished"} to get only 
 runs = api.runs("aisurrey_photoacoustics/MSOT_Diffusion2", filters=FILTER)
 
 for run in runs:
+
     
     noise_level = run.notes
     name = run.name
-    if len(name.split('_')) == 3:
-        [model, input_type, gt_type] = name.split('_')
-    else:
-        # case model = 'deeplabv3_resnet101'
-        [model1, model2, input_type, gt_type] = name.split('_')
+    if len(name.split('_')) == 2:
+        [model, input_type] = name.split('_')
+    elif len(name.split('_')) == 3:
+        # case model = 'Unet_e2eQPAT'
+        [model1, model2, input_type] = name.split('_')
         model = f'{model1}_{model2}'
+    else:
+        [model1, model2, model3, input_type] = name.split('_')
         
     if model not in MODELS:
-        print(f"Skipping model {model}")
+        print(f"Skipping model {model} not in MODELS list")
+        continue
+    if run.state != "finished":
+        print(f"Skipping model {model} not finished (state={run.state})")
         continue
 
     artifacts = [

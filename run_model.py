@@ -22,7 +22,6 @@ import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
 from epoch_steps import *
-from nn_modules.time_conditioned_residual_unet import TimeConditionedResUNet
 
 # An all purpose script for training, validating and testing models
 # to test a trained model set --epochs 0 and --load_best_checkpoint_from to the checkpoint directory
@@ -76,6 +75,7 @@ if __name__ == '__main__':
     image_size = (args.image_size, args.image_size)
     channels = datasets['synthetic']['test'][0][0].shape[-3]
     out_channels = channels * 2 if args.predict_fluence else channels
+    loss_fn = None  # only set for EDM2; kept defined so EMA snapshotting works for the ablation too
     match args.model:
         case 'UNet_e2eQPAT':
             model = e2eQPAT_networks.RegressionUNet(
@@ -84,48 +84,34 @@ if __name__ == '__main__':
                 initial_filter_size=64, 
                 kernel_size=3
             )
-        case 'UNet_wl_pos_emb':
-            # model = ddp.Unet(
-            #     dim=32, channels=channels, out_dim=out_channels,
-            #     self_condition=False, image_condition=False, use_attn=args.attention,
-            #     full_attn=False, flash_attn=False, learned_sinusoidal_cond=False, 
-            # )
-            #model = TimeConditionedResUNet(
-            #    dim_in=channels, dim_out=out_channels, dim_first_layer=64,
-            #    kernel_size=3, theta_pos_emb=10000, self_condition=False,
-            #    image_condition=False
-            #)
-            model = EDM2_UNet(
-                img_resolution=args.image_size,
-                img_channels_in=channels,
-                img_channels_out=out_channels,
-                label_dim=1000,
-                model_channels=64,
-                attn_resolutions=[16, 8] if args.attention else [],
-                noise_emb=False,
-            )
         case 'UNet_diffusion_ablation':
+            # EDM2 UNet backbone trained as a direct MSE regressor instead of a
+            # score model. Backbone hyperparameters (channel_mult/num_blocks
+            # defaults, attention, conditioning) are kept identical to the 'EDM2'
+            # case so that the only difference is the diffusion framework itself;
+            # the noise (timestep) embedding is removed since there is no sigma.
             model = EDM2_UNet(
-                img_resolution=args.image_size,
+                img_resolution=256, # use 256 for backward compatibility with pretrained weights; doesn't affect architecture
                 img_channels_in=channels,
                 img_channels_out=out_channels,
-                label_dim=0,
+                label_dim=1000 if args.wl_conditioning else 0,
                 model_channels=64,
                 attn_resolutions=[16, 8] if args.attention else [],
                 noise_emb=False,
-                num_blocks=3,
-                #channel_mult=[1,2,4,8,16],
-                channel_mult=[1,2,3,4,8],
             )
         case 'EDM2':
-            attn_resolutions = [16, 8] if args.attention else []
             label_dim = 1000 if args.wl_conditioning else 0
             in_channels = out_channels+1 # plus 1 for conditional information
             loss_fn = EDM2Loss(P_mean=-0.8, P_std=1.6, sigma_data=0.5)
             model = Precond(
-                img_resolution=256, img_channels_in=in_channels, img_channels_out=out_channels,
-                label_dim=label_dim, model_channels=64, attn_resolutions=attn_resolutions, 
-                use_fp16=False, sigma_data=0.5
+                img_resolution=256, # use 256 for backward compatibility with pretrained weights; doesn't affect architecture
+                img_channels_in=in_channels, 
+                img_channels_out=out_channels,
+                label_dim=label_dim, 
+                model_channels=64, 
+                attn_resolutions=[16, 8] if args.attention else [], 
+                use_fp16=False, 
+                sigma_data=0.5
             )
             if not args.attention:
                 uf.remove_attention(model.unet)
@@ -159,7 +145,7 @@ if __name__ == '__main__':
                     "0",  # Matches Conv2d at position 0 in Sequential blocks
                     "2",  # Matches Conv2d at position 2 in Sequential blocks
                 ]
-            case 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation' | 'DDIM' | 'DiT' | 'EDM2' | 'Swin_UNet':
+            case 'UNet_diffusion_ablation' | 'EDM2':
                 raise NotImplementedError('BOFT not implemented for this model yet')
         boft_config = peft.BOFTConfig(
             boft_block_size=args.boft_rank,
@@ -188,7 +174,7 @@ if __name__ == '__main__':
         }
     
     # ==================== Optimizer, lr Scheduler, Objective, Checkpointer ====================
-    if args.model not in ['EDM2', 'unet_diffusion_ablation']:
+    if args.model not in ['EDM2', 'UNet_diffusion_ablation']:
         optimizer = torch.optim.Adam(
             model.parameters(), lr=args.lr, eps=1e-8, amsgrad=True
         )
@@ -235,16 +221,17 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             
             match args.model:
-                case 'UNet_e2eQPAT' | 'Swin_UNet':
+                case 'UNet_e2eQPAT':
                     Y_hat = model(X)
-                case 'UNet_wl_pos_emb':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X)
+                    if args.wl_conditioning:
+                        wavelength_nm_onehot = torch.zeros(
+                            (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                        )
+                        wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                        Y_hat = model(X, class_labels=wavelength_nm_onehot)
+                    else:
+                        Y_hat = model(X)
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
@@ -262,7 +249,7 @@ if __name__ == '__main__':
                         )
 
             match args.model:
-                case 'UNet_e2eQPAT' | 'UNet_wl_pos_emb' | 'UNet_diffusion_ablation':
+                case 'UNet_e2eQPAT' | 'UNet_diffusion_ablation':
                     mu_a_hat = Y_hat[:, 0:1]
                     mu_a_loss = F.mse_loss(mu_a_hat, mu_a, reduction='mean')
                     if args.predict_fluence:
@@ -285,7 +272,7 @@ if __name__ == '__main__':
                     (model.state_dict()[name] - pretrained_params[name]).pow(2).mean() for name in pretrained_params.keys()
                 )
             loss.backward()
-            if args.model in ['EDM2', 'unet_diffusion_ablation']:
+            if args.model in ['EDM2', 'UNet_diffusion_ablation']:
                 lr = learning_rate_schedule(
                     cur_nimg=cur_nimg, batch_size=X.shape[0], ref_lr=args.lr, ref_batches=70000, rampup_Mimg=0.1
                 )
@@ -299,7 +286,7 @@ if __name__ == '__main__':
             
             optimizer.step()
 
-            if args.model in ['EDM2', 'unet_diffusion_ablation']:
+            if args.model in ['EDM2', 'UNet_diffusion_ablation']:
                 # Update EMA and training state.
                 cur_nimg += X.shape[0]
                 ema.update(cur_nimg=cur_nimg, batch_size=X.shape[0])
@@ -316,9 +303,9 @@ if __name__ == '__main__':
         
         # ==================== Validation epoch ====================
         # only validate every 10 epochs for diffusion, due to the long sampling time
-        if (args.model not in ['DDIM', 'DiT', 'EDM2']) or ((epoch+1) % 10 == 0) or (epoch < 10):
+        if (args.model not in ['EDM2', 'UNet_diffusion_ablation']) or ((epoch+1) % 10 == 0) or (epoch < 10):
             model.eval()
-            if args.model in ['EDM2', 'unet_diffusion_ablation']:
+            if args.model in ['EDM2', 'UNet_diffusion_ablation']:
                 save_ema_pickles(ema, cur_nimg, loss_fn, args.save_dir, delete_previous=True)
                 module = reconstruct_edm2_phema_from_dir(
                     args.save_dir, [args.phema_reconstruction_std], delete_pkls=False)[0]['net']
@@ -346,7 +333,7 @@ if __name__ == '__main__':
                 if args.save_dir:
                     # priority is given to the validation loss of the experimental data
                     checkpointer(module, epoch, experimental_val_loss)
-                if not args.no_lr_scheduler and args.model not in ['EDM2', 'unet_diffusion_ablation']:
+                if not args.no_lr_scheduler and args.model not in ['EDM2', 'UNet_diffusion_ablation']:
                     scheduler.step(experimental_val_loss)
 
             if args.synthetic_or_experimental == 'synthetic' or args.synthetic_or_experimental == 'both':          
@@ -370,7 +357,7 @@ if __name__ == '__main__':
             if args.synthetic_or_experimental == 'synthetic':
                 if args.save_dir: # save model checkpoint if validation loss is lower than previous best
                     checkpointer(module, epoch, synthetic_val_loss)
-                if not args.no_lr_scheduler and args.model not in ['EDM2', 'unet_diffusion_ablation']:
+                if not args.no_lr_scheduler and args.model not in ['EDM2', 'UNet_diffusion_ablation']:
                     scheduler.step(synthetic_val_loss)
                 
         logging.info(f"lr: {optimizer.param_groups[0]['lr']}")
@@ -380,7 +367,7 @@ if __name__ == '__main__':
 
         if args.save_dir:
             save_ckpt = {'model_state_dict': model.state_dict()}
-            if args.model in ['EDM2', 'unet_diffusion_ablation']:
+            if args.model in ['EDM2', 'UNet_diffusion_ablation']:
                 save_ckpt['ema_state_dict'] = ema.state_dict()
             torch.save(save_ckpt, os.path.join(checkpointer.dirpath, 'latest_checkpoint.pt'))
             var_args['last_completed_epoch'] = epoch
@@ -398,6 +385,13 @@ if __name__ == '__main__':
     logging.info('loading checkpoint with best validation loss for testing')
     checkpointer.load_best_model(model)
     model.eval()
+    if args.model in ['EDM2', 'UNet_diffusion_ablation']:
+        # test_epoch / save_test_examples run inference through `module` (the
+        # EMA-reconstructed net the checkpointer saved during validation), not
+        # `model`. Without this, testing would use the final validation epoch's
+        # EMA net instead of the best-validation-loss checkpoint.
+        checkpointer.load_best_model(module)
+        module.eval()
     if args.synthetic_or_experimental == 'experimental' or args.synthetic_or_experimental == 'both':
         experimental_test_loss, _, _ = test_epoch(
             args=args, module=module, dataloader=dataloaders['experimental']['test'], 
@@ -487,16 +481,18 @@ if __name__ == '__main__':
         ).to(device)
         with torch.no_grad():
             match args.model:
-                case 'UNet_e2eQPAT' | 'Swin_UNet':
+                case 'UNet_e2eQPAT':
                     Y_hat = model(X)
-                case 'UNet_wl_pos_emb':
-                    wavelength_nm_onehot = torch.zeros(
-                        (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
-                    )
-                    wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
-                    Y_hat = model(X, class_labels=wavelength_nm_onehot)
                 case 'UNet_diffusion_ablation':
-                    Y_hat = model(X)
+                    # use `module` (best EMA net) to match the test_epoch path
+                    if args.wl_conditioning:
+                        wavelength_nm_onehot = torch.zeros(
+                            (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device
+                        )
+                        wavelength_nm_onehot[:, wavelength_nm.squeeze()] = 1.0
+                        Y_hat = module(X, class_labels=wavelength_nm_onehot)
+                    else:
+                        Y_hat = module(X)
                 case 'EDM2':
                     wavelength_nm_onehot = torch.zeros(
                         (wavelength_nm.shape[0], 1000), dtype=torch.float32, device=device

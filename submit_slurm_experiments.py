@@ -41,6 +41,10 @@ pretrained_unet_e2eqpat = [
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260529_UNet_e2eQPAT.Naisurrey14.j2143619",
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260529_UNet_e2eQPAT.Naisurrey11.j2143672",
 ]
+pretrained_unet_diffusion_ablation = [
+]
+from_scratch_unet_diffusion_ablation = [
+]
 
 #MODELS = ['UNet_e2eQPAT','EDM2','UNet_diffusion_ablation']
 #MODELS = ['UNet_e2eQPAT']
@@ -81,7 +85,6 @@ skip_test = False    # set True on all but the final job
 save_dirs = {
     'EDM2': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_EDM2",
     'UNet_e2eQPAT': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_e2eQPAT",
-    'UNet_wl_pos_emb': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_wl_pos_emb",
     'UNet_diffusion_ablation': f"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/{datetime.now().strftime('%Y%m%d')}_UNet_diffusion_ablation"
 }
 
@@ -92,10 +95,16 @@ for model, fold in itertools.product(MODELS, FOLDS):
     time_limit = '00-01:00:00' if experiment in ['Digimouse_test', 'Digimouse_extrusion_test'] else time_limit
     synthetic_or_experimental = 'experimental' if experiment in ['experimental_from_scratch', 'experimental_fine_tune'] else 'synthetic'
     synthetic_dataset = 'Digimouse' if experiment in ['Digimouse_test'] else ('Digimouse_extrusion' if experiment in ['Digimouse_extrusion_test'] else 'ImageNet')
-    epochs = '1000' if model == 'EDM2' else '200'
+    epochs = '1000' if model in ['EDM2', 'UNet_diffusion_ablation'] else '200'
     wandb_notes = f"{experiment}_{model}_fold{fold}"
     if experiment in ['experimental_fine_tune', 'digimouse_test', 'digimouse_extrusion_test']:
-        load_best_checkpoint_from = pretrained_edm2[fold] if model == 'EDM2' else pretrained_unet_e2eqpat[fold]
+        match model:
+            case 'EDM2':
+                load_best_checkpoint_from = pretrained_edm2[fold]
+            case 'UNet_diffusion_ablation':
+                load_best_checkpoint_from = pretrained_unet_diffusion_ablation[fold]
+            case _:
+                load_best_checkpoint_from = pretrained_unet_e2eqpat[fold]
     else:
         load_best_checkpoint_from = None
 

@@ -30,7 +30,7 @@ def get_config() -> tuple[argparse.Namespace, dict]:
     parser.add_argument('--save_dir', type=str, default='Unet_checkpoints', help='path to save the model')
     parser.add_argument('--load_best_checkpoint_from', type=str, default=None, help='directory containing a saved checkpoint; the single .pt file (excluding latest_checkpoint.pt) is loaded as the starting weights')
     parser.add_argument('--warmup_period', type=int, default=1, help='warmup period for the learning rate, must be int greater than 0')
-    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'UNet_wl_pos_emb', 'UNet_diffusion_ablation', 'EDM2'], default='UNet_e2eQPAT', help='model to train')
+    parser.add_argument('--model', choices=['UNet_e2eQPAT', 'UNet_diffusion_ablation', 'EDM2'], default='UNet_e2eQPAT', help='model to train')
     parser.add_argument('--data_normalisation', choices=['standard', 'minmax'], default='standard', help='normalisation method for the data')
     parser.add_argument('--fold', choices=['0', '1', '2', '3', '4'], default='0', help='fold for cross-validation, only used for experimental data')
     parser.add_argument('--wandb_notes', type=str, default='None', help='optional, comment for wandb')
