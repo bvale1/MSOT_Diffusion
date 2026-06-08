@@ -27,12 +27,19 @@ pretrained_edm2 = [
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145357",
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145358",
 ]
-from_scratch_edm2 = [
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145393",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145394",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey22.j2145395",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey25.j2145396",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey25.j2145397",
+#from_scratch_edm2 = [ # lr 1e-3
+#"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145393",
+#"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey21.j2145394",
+#"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey22.j2145395",
+#"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey25.j2145396",
+#"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey25.j2145397",
+#]
+from_scratch_edm2 = [ # lr 1e-4
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260605_EDM2.Naisurrey22.j2149060",
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260605_EDM2.Naisurrey22.j2149061",
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260605_EDM2.Naisurrey25.j2149062",
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260605_EDM2.Naisurrey26.j2149063",
+"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260605_EDM2.Naisurrey25.j2149064",
 ]
 pretrained_unet_e2eqpat = [
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260529_UNet_e2eQPAT.Naisurrey18.j2143616",
@@ -94,10 +101,21 @@ for model, fold in itertools.product(MODELS, FOLDS):
     time_limit = '00-12:00:00' if model == 'UNet_e2eQPAT' else '00-72:00:00'
     time_limit = '00-01:00:00' if experiment in ['Digimouse_test', 'Digimouse_extrusion_test'] else time_limit
     synthetic_or_experimental = 'experimental' if experiment in ['experimental_from_scratch', 'experimental_fine_tune'] else 'synthetic'
+    
+    if model in ['EDM2', 'UNet_diffusion_ablation']:
+        epochs = '500'
+        if resume_from:
+            epochs = '1000'
+    else:
+        epochs = '200'
+    if experiment in ['Digimouse_test', 'Digimouse_extrusion_test']:
+        epochs = '0'
+    
+    lr = '1e-4' if synthetic_or_experimental == 'experimental' else '1e-3'
     synthetic_dataset = 'Digimouse' if experiment in ['Digimouse_test'] else ('Digimouse_extrusion' if experiment in ['Digimouse_extrusion_test'] else 'ImageNet')
     epochs = '1000' if model in ['EDM2', 'UNet_diffusion_ablation'] else '200'
     wandb_notes = f"{experiment}_{model}_fold{fold}"
-    if experiment in ['experimental_fine_tune', 'digimouse_test', 'digimouse_extrusion_test']:
+    if experiment in ['experimental_fine_tune', 'Digimouse_test', 'Digimouse_extrusion_test']:
         match model:
             case 'EDM2':
                 load_best_checkpoint_from = pretrained_edm2[fold]
@@ -113,6 +131,7 @@ for model, fold in itertools.product(MODELS, FOLDS):
         "python3 clone_and_run_msot_diffusion.py",
         "--cluster_id .N$SLURM_JOB_NODELIST.j$SLURM_JOB_ID",
         f"--save_dir {save_dirs[model]}",
+        f"--lr {lr}",
         f"--synthetic_or_experimental {synthetic_or_experimental}",
         f"--synthetic_root_dir {DATASETS[synthetic_dataset]}",
         f"--experimental_root_dir {DATASETS['e2eQPAT']}",

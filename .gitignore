@@ -35,6 +35,8 @@ MANIFEST
 *.png
 *.svg
 *.jpeg
+*.json
+*.pdf
 *.h5
 *2025*
 

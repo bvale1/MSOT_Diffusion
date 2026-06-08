@@ -4,6 +4,7 @@ import json
 import itertools
 import wandb
 import numpy as np
+import pandas as pd
 from dotenv import load_dotenv
 from copy import deepcopy
 
@@ -21,9 +22,12 @@ MODELS = [
     'UNet_diffusion_ablation',
 ]
 
+FOLDS = [0, 1, 2, 3, 4]
+
 METRICS = [
     'RMSE',
     'MAE',
+    'Rel_Err',
     'PSNR',
 ]
 
@@ -43,14 +47,26 @@ if wandb_key:
 api = wandb.Api(timeout=6000)
 
 # Initialise empty result structure
-sample_metrics_dict: dict = {}
-for model in MODELS:
-    sample_metrics_dict[model] = {}
-    for metric in METRICS:
-        sample_metrics_dict[model][metric] = {
-            'bg': [],
-            'inclusion': [],
-        }
+metrics_dict: dict = {}
+loss_curves_dict: dict = {}
+for experiment in EXPERIMENTS:
+    metrics_dict[experiment] = {}
+    if experiment in ['experimental_from_scratch', 'experimental_fine_tune']:
+        loss_curves_dict[experiment] = {}
+    for model in MODELS:
+        metrics_dict[experiment][model] = {}
+        for metric in METRICS:
+            if experiment in ['experimental_from_scratch', 'experimental_fine_tune']:
+                metrics_dict[experiment][model][metric] = {
+                    'bg': [],
+                    'inclusion': [],
+                }
+                loss_curves_dict[experiment][model] = {'train_loss': [], 'val_loss': []}
+            else:
+                metrics_dict[experiment][model][metric] = {
+                    'bg': [],  # will store fold as index and value as metric value, to be averaged later
+                }
+
 
 # Cache runs per project to avoid repeated API calls
 project_runs: dict[str, list] = {}
@@ -58,110 +74,56 @@ project_runs: dict[str, list] = {}
 FILTER = {"state": "finished"}  # You can use {"state": "finished"} to get only completed runs
 runs = api.runs("aisurrey_photoacoustics/MSOT_Diffusion2", filters=FILTER)
 
-for run in runs:
 
-    
-    noise_level = run.notes
+
+for run in runs:
+    notes = run.notes
     name = run.name
-    if len(name.split('_')) == 2:
-        [model, input_type] = name.split('_')
-    elif len(name.split('_')) == 3:
-        # case model = 'Unet_e2eQPAT'
-        [model1, model2, input_type] = name.split('_')
-        model = f'{model1}_{model2}'
+    fold = int(name.split('fold')[-1])  # Assumes name format like "model_foldX"
+    model = '_'.join(name.split('_')[:-1])  # Extract model name from run name
+    # Assumes notes format like "experiment_model_foldX", find the string before the model name
+    if f"_{model}_" in notes:
+        experiment = notes.split(f"_{model}_")[0]
     else:
-        [model1, model2, model3, input_type] = name.split('_')
-        
+        raise ValueError(f"Unexpected notes format: {notes}")
+    
+    if fold not in FOLDS:
+        print(f"Skipping fold {notes} not in FOLDS list")
+        continue
     if model not in MODELS:
-        print(f"Skipping model {model} not in MODELS list")
+        print(f"Skipping model {notes} not in MODELS list")
+        continue
+    if experiment not in EXPERIMENTS:
+        print(f"Skipping experiment {notes} not in EXPERIMENTS list")
         continue
     if run.state != "finished":
-        print(f"Skipping model {model} not finished (state={run.state})")
+        print(f"Skipping model {notes} not finished (state={run.state})")
         continue
 
-    artifacts = [
-        a for a in run.logged_artifacts()
-        if a.type == "dataset" and "test_per_sample_metrics" in a.name
-    ]
-    if not artifacts:
-        continue
-    
-    # if multiple versions were logged, take latest version for this run
-    artifact = max(artifacts, key=lambda a: int(a.version.lstrip("v")))
+    # get test metrics logged to run.summary as '{mask}_{logging_prefix}_mean_{metric}'
+    synthetic_or_experimental = 'experimental' if experiment in ['experimental_from_scratch', 'experimental_fine_tune'] else 'synthetic'
+    logging_prefix = f'{synthetic_or_experimental}_test'
+    mask_types = MASK_TYPES if synthetic_or_experimental == 'experimental' else ['bg']
+    for metric in METRICS:
+        for mask in mask_types:
+            wandb_key = f'{mask}_{logging_prefix}_mean_{metric}'
+            metrics_dict[experiment][model][metric][mask].append(run.summary.get(wandb_key))
 
-    local_dir = artifact.download(root=f"/tmp/wandb_artifacts/{run.id}")
-    with open(os.path.join(local_dir, "bg.json"), "r") as f:
-        bg_dict = json.load(f)
-    with open(os.path.join(local_dir, "inclusion.json"), "r") as f:
-        inclusion_dict = json.load(f)
-    
+    # get loss curve
+    if synthetic_or_experimental == 'experimental':
+        train_loss = run.history(
+            x_axis='_step', keys=['mean_train_loss'], stream='default', pandas=True,
+        )
+        
+        loss_curves_dict[experiment][model]['train_loss'].append(train_loss['mean_train_loss'].tolist())
+        val_loss = run.history(
+            x_axis='_step', keys=['mean_experimental_val_loss'], stream='default', pandas=True,
+        )
+        loss_curves_dict[experiment][model]['val_loss'].append(val_loss['mean_experimental_val_loss'].tolist())
+        
 
-best, worst = {}, {}
-# reduces sample-level metrics to mean and percentile-based 95% CI half-width
-summary_metrics_dict = deepcopy(sample_metrics_dict)
-for model, metric, mask_type in itertools.product(MODELS, METRICS, MASK_TYPES):
-    
-            for metric, values in sample_metrics_dict[gt_type][noise_level][model][input_type][mask_type].items():
-                # values should be a list of lists [5, n_samples]
-                if not values:
-                    print(f"no values for {model}/{input_type}/{gt_type}/{noise_level}/{mask_type}/{metric}")
-                    summary_metrics_dict[gt_type][noise_level][model][input_type][mask_type][metric] = {
-                        'mean': None,
-                        'ci95': None,
-                    }
-                    continue
-                
-                if metric == 'sample_names':
-                    sample_names = summary_metrics_dict[gt_type][noise_level][model][input_type][mask_type][metric][0]
-                    sample_metrics_dict[gt_type][noise_level][model][input_type][mask_type][metric] = sample_names
-                    continue
-                
-                if len(values) != 5:
-                    raise ValueError(f"Expected 5 runs for {model}/{input_type}/{gt_type}/{noise_level}/{mask_type}/{metric} but got {len(values)}")
-                
-                # compute mean for each sample
-                metric_values = np.nanmean(np.asarray(values), axis=0)
-                finite_mask = np.isfinite(metric_values)
-                sample_metrics_dict[gt_type][noise_level][model][input_type][mask_type][metric] = metric_values.tolist()
-                # print top and bottom three samples for this metric
-                highest_idx = np.argsort(metric_values[finite_mask])[-3:]
-                lowest_idx = np.argsort(metric_values[finite_mask])[:3]
-                if metric in ['IoU', 'Sensitivity', 'Specificity', 'MAE', 'RMSE'] and model in ['mlp', 'segformerb5']:
-                    print(f"{model}/{input_type}/{gt_type}/{noise_level}/{mask_type}/{metric}")
-                    print(f"  highest: {[(sample_names[i], metric_values[i]) for i in highest_idx]}")
-                    print(f"  lowest: {[(sample_names[i], metric_values[i]) for i in lowest_idx]}")
-                    for i in (highest_idx if metric in ['IoU', 'Sensitivity', 'Specificity'] else lowest_idx):
-                        if sample_names[i] not in best.keys():
-                            best[sample_names[i]] = 1
-                        else:                            
-                            best[sample_names[i]] += 1
-                    for i in (lowest_idx if metric in ['IoU', 'Sensitivity', 'Specificity'] else highest_idx):
-                        if sample_names[i] not in worst.keys():
-                            worst[sample_names[i]] = 1
-                        else:                            
-                            worst[sample_names[i]] += 1
-
-                metric_values = np.nanmean(np.asarray(values), axis=1)
-                valid_values = metric_values[np.isfinite(metric_values)]
-
-                if valid_values.size == 0:
-                    mean = None
-                    ci95 = None
-                else:
-                    mean = float(np.mean(valid_values))
-                    p2_5 = float(np.nanpercentile(valid_values, 2.5))
-                    p97_5 = float(np.nanpercentile(valid_values, 97.5))
-                    ci95 = float((p97_5 - p2_5) / 2.0)
-                    
-                summary_metrics_dict[gt_type][noise_level][model][input_type][mask_type][metric] = {
-                    'mean': mean,
-                    'ci95': ci95,
-                }
-                
-print("Best samples (most often in top 3): ", best)
-print("Worst samples (most often in bottom 3): ", worst)
-# save as json
-with open(os.path.join(os.path.dirname(__file__), 'per_sample_metrics.json'), 'w') as f:
-    json.dump(sample_metrics_dict, f, indent=4)
-with open(os.path.join(os.path.dirname(__file__), 'summary_metrics.json'), 'w') as f:
-    json.dump(summary_metrics_dict, f, indent=4)
+# save results to json
+with open('wandb_metrics.json', 'w') as f:
+    json.dump(metrics_dict, f, indent=4)
+with open('wandb_loss_curves.json', 'w') as f:
+    json.dump(loss_curves_dict, f, indent=4)

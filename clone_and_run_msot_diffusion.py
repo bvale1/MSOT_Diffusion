@@ -29,7 +29,6 @@ args = parser.parse_args()
 # ARGUMENTS
 save_dir = args.resume_training_from if args.resume_training_from else args.save_dir + args.cluster_id
 
-lr = '1e-3' if args.synthetic_or_experimental == 'synthetic' else '1e-4'
 image_size = '256' if args.synthetic_or_experimental == 'synthetic' else '288'
 #data_normalisation = 'minmax' if args.model == 'DDIM' else 'standard'
 std_data = '0.5' if args.model == 'EDM2' else '1.0'
