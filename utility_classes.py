@@ -466,12 +466,16 @@ class CheckpointSaver:
         Code from Aman Arora's W&B report:
         https://wandb.ai/amanarora/melanoma/reports/How-to-save-all-your-trained-model-weights-locally-after-every-epoch--VmlldzoxNTkzNjY1
         """
-        if not os.path.exists(dirpath): os.makedirs(dirpath)
+        if not os.path.exists(dirpath): 
+            os.makedirs(dirpath)
+            self.top_model_paths = []
+        else: # add existing checkpoints to the list of tracked checkpoints
+            existing_checkpoints = [f for f in os.listdir(dirpath) if f.endswith('.pt')]
+            self.top_model_paths = [{'path': os.path.join(dirpath, f), 'score': np.inf if decreasing else -np.inf} for f in existing_checkpoints]
         self.dirpath = dirpath
         self.top_n = top_n 
         self.decreasing = decreasing
         self.wand_log = wand_log
-        self.top_model_paths = []
         self.best_metric_val = np.Inf if decreasing else -np.Inf
         
     def __call__(self, model : torch.nn.Module, epoch : int, metric_val : float) -> None:
