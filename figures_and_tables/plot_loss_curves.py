@@ -33,10 +33,14 @@ def plot_loss_curves(
     labels: list,
     savename: str,
     std_or_iqr: Literal['std', 'iqr'] = 'std',
+    linthresh: None | float = None,
     ) -> None:
 
     fig, ax = plt.subplots(1, 1, figsize=(6, 4))
-    ax.set_yscale('log')
+    if linthresh is not None:
+        ax.set_yscale('symlog', linthresh=linthresh)
+    else:
+        ax.set_yscale('log')
     ylabel = r'Denoising loss (a.u.)' if model == 'EDM2' else r'Mean squared error (a.u.)'
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Epochs')
@@ -79,15 +83,16 @@ def plot_loss_curves(
 
     ax.legend(loc='upper right')
     ax.set_xlim(0, epochs)
-    ax.grid(True)
-    ax.set_axisbelow(True)
+    #ax.grid(True)
+    #ax.set_axisbelow(True)
     fig.tight_layout()
     fig.savefig(savename, dpi=300, bbox_inches='tight', format='pdf')
 
 
 if __name__ == "__main__":
     # choose the model and compare it across the two experiments
-    MODEL = 'UNet_e2eQPAT'
+    MODELS = ['UNet_e2eQPAT', 'EDM2']
+    LINTHRESH = {'UNet_e2eQPAT': None, 'EDM2': 1e-3}
     EXPERIMENTS = ['experimental_from_scratch', 'experimental_fine_tune']
     LABELS = ['not pretrained', 'pretrained']
 
@@ -95,7 +100,8 @@ if __name__ == "__main__":
     with open(json_path, 'r') as f:
         loss_curves = json.load(f)
 
-    savename = f'loss_curves_{MODEL}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
-    plot_loss_curves(
-        loss_curves, MODEL, EXPERIMENTS, LABELS, savename, std_or_iqr='std'
-    )
+    for MODEL in MODELS:
+        savename = f'loss_curves_{MODEL}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
+        plot_loss_curves(
+            loss_curves, MODEL, EXPERIMENTS, LABELS, savename, std_or_iqr='iqr', linthresh=LINTHRESH[MODEL] 
+        )

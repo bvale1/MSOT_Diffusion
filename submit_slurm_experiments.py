@@ -5,20 +5,20 @@ import textwrap
 from datetime import datetime
 
 # EDM2 pretrained weights
-pretrained_edm2=[
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010491",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010492",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010493",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010494",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey24.j2010490",
-]
-pretrained_unet_e2eqpat=[
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017600",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017612",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey26.j2017617",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017653",
-"/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017599",
-]
+# pretrained_edm2=[
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010491",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey22.j2010492",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010493",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey23.j2010494",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_edm2_models/20250731_EDM2.Naisurrey24.j2010490",
+# ]
+# pretrained_unet_e2eqpat=[
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017600",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017612",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey26.j2017617",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017653",
+# "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/pretrained_unete2eqpat/20251124_UNet_e2eQPAT.Naisurrey25.j2017599",
+# ]
 # MSOT_diffusion2 pretrained weights
 pretrained_edm2 = [
 "/mnt/fast/nobackup/users/wv00017/MSOT_diffusion/MSOT_diffusion2/20260531_EDM2.Naisurrey24.j2145354",
@@ -121,7 +121,7 @@ for model, fold in itertools.product(MODELS, FOLDS):
                 load_best_checkpoint_from = pretrained_edm2[fold]
             case 'UNet_diffusion_ablation':
                 load_best_checkpoint_from = pretrained_unet_diffusion_ablation[fold]
-            case _:
+            case 'UNet_e2eQPAT':
                 load_best_checkpoint_from = pretrained_unet_e2eqpat[fold]
     else:
         load_best_checkpoint_from = None

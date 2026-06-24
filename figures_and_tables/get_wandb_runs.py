@@ -79,6 +79,11 @@ runs = api.runs("aisurrey_photoacoustics/MSOT_Diffusion2", filters=FILTER)
 for run in runs:
     notes = run.notes
     name = run.name
+    
+    if notes.split('_')[-1] in ['lr1em3']:
+        print(f"Skipping run {notes} due to learning rate filter")
+        continue
+    
     fold = int(name.split('fold')[-1])  # Assumes name format like "model_foldX"
     model = '_'.join(name.split('_')[:-1])  # Extract model name from run name
     # Assumes notes format like "experiment_model_foldX", find the string before the model name
@@ -104,6 +109,7 @@ for run in runs:
     synthetic_or_experimental = 'experimental' if experiment in ['experimental_from_scratch', 'experimental_fine_tune'] else 'synthetic'
     logging_prefix = f'{synthetic_or_experimental}_test'
     mask_types = MASK_TYPES if synthetic_or_experimental == 'experimental' else ['bg']
+    print(f"Processing run: {notes}, experiment: {experiment}, model: {model}, fold: {fold}")
     for metric in METRICS:
         for mask in mask_types:
             wandb_key = f'{mask}_{logging_prefix}_mean_{metric}'

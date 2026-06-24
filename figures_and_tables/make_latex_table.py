@@ -65,6 +65,14 @@ def _model_cells(models_dict: dict, model: str, metrics: list) -> str:
     return ' & '.join(cells)
 
 
+def _model_centre_cells(models_dict: dict, model: str, metrics: list) -> str:
+    return ' & '.join(f"${models_dict[model][m][0]:.3f}$" for m in metrics)
+
+
+def _model_spread_cells(models_dict: dict, model: str, metrics: list) -> str:
+    return ' & '.join(f"$\\pm {models_dict[model][m][1]:.3f}$" for m in metrics)
+
+
 def print_single_tex_reslts_table(
     models_dict: dict,
     header: str,
@@ -130,11 +138,11 @@ def print_double_tex_reslts_table(
     ]
     for model in models:
         name = MODEL_DISPLAY.get(model, model.replace('_', ' '))
-        left = _model_cells(models_dict_left, model, metrics)
-        right = _model_cells(models_dict_right, model, metrics)
-        lines.append(f'    {name} & {left} & {right} \\\\')
+        row_name = '\\multirow{2}{*}{' + name + '}'
+        lines.append(f'    {row_name} & {_model_centre_cells(models_dict_left, model, metrics)} & {_model_centre_cells(models_dict_right, model, metrics)} \\\\')
+        lines.append(f'    & {_model_spread_cells(models_dict_left, model, metrics)} & {_model_spread_cells(models_dict_right, model, metrics)} \\\\')
+        lines.append(r'    \hline')
     lines += [
-        r'    \hline',
         r'    \end{tabular}}',
         r'\end{table*}',
     ]
@@ -173,10 +181,10 @@ def print_blocked_tex_reslts_table(
         lines.append(r'    \hline')
         for model in models_dict_left.keys():
             name = MODEL_DISPLAY.get(model, model.replace('_', ' '))
-            left = _model_cells(models_dict_left, model, metrics)
-            right = _model_cells(models_dict_right, model, metrics)
-            lines.append(f'    {name} & {left} & {right} \\\\')
-        lines.append(r'    \hline')
+            row_name = '\\multirow{2}{*}{' + name + '}'
+            lines.append(f'    {row_name} & {_model_centre_cells(models_dict_left, model, metrics)} & {_model_centre_cells(models_dict_right, model, metrics)} \\\\')
+            lines.append(f'    & {_model_spread_cells(models_dict_left, model, metrics)} & {_model_spread_cells(models_dict_right, model, metrics)} \\\\')
+            lines.append(r'    \hline')
     lines += [
         r'    \end{tabular}}',
         r'\end{table*}',
@@ -198,6 +206,7 @@ if __name__ == "__main__":
     ]
     # 'mean_std' for mean +/- std, 'median_iqr' for median +/- IQR
     AGG = 'median_iqr'
+    #AGG = 'mean_std'
 
     json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wandb_metrics.json')
     with open(json_path, 'r') as f:
@@ -214,15 +223,15 @@ if __name__ == "__main__":
     )
 
     # -------- Table 2: Digimouse_test | Digimouse_extrusion_test, 'bg' --------
-    digimouse_bg = build_models_dict(metrics_json, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
-    digimouse_extrusion_bg = build_models_dict(metrics_json, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
-    print_double_tex_reslts_table(
-        digimouse_bg, 'Digimouse',
-        digimouse_extrusion_bg, 'Digimouse (extrusion)',
-        metrics=METRICS,
-        caption='Out-of-distribution results on the Digimouse test sets (background).',
-        label='tab:digimouse',
-    )
+    # digimouse_bg = build_models_dict(metrics_json, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
+    # digimouse_extrusion_bg = build_models_dict(metrics_json, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
+    # print_double_tex_reslts_table(
+    #     digimouse_bg, 'Digimouse',
+    #     digimouse_extrusion_bg, 'Digimouse (extrusion)',
+    #     metrics=METRICS,
+    #     caption='Out-of-distribution results on the Digimouse test sets (background).',
+    #     label='tab:digimouse',
+    # )
 
     # ---- Table 3: experimental_from_scratch + _fine_tune, bg | inclusion ----
     blocks = []

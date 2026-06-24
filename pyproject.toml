@@ -1,0 +1,23 @@
+[project]
+name = "msot-diffusion"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dotenv==0.9.9",
+    "h5py==3.12.1",
+    "matplotlib==3.9.2",
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "peft==0.17.1",
+    "pytorch-warmup==0.2.0",
+    "scipy==1.14.1",
+    "timm==0.9.7",
+    "torch==2.5.1",
+    "torchaudio==2.5.1",
+    "torchvision==0.20.1",
+    "torchvista==0.2.6",
+    "tqdm==4.67.1",
+    "wandb==0.27.2",
+]
