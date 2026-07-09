@@ -329,17 +329,17 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
     }
     '''
     https://github.com/BohndiekLab/end_to_end_phantom_QPAT
-    @article{Janek2023IEEE,
+    @article{Janek2024IEEE,
     author = {Janek Gröhl and Thomas R Else and Lina Hacker and Ellie V Bunce and Paul W Sweeney and Sarah E Bohndiek},
     journal = {IEEE Transactions on Medical Imaging},
     publisher = {IEEE},
     title = {Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
-    year = {2023},
+    year = {2024},
     }
-    @article{grohl2023dataset,
+    @article{grohl2024dataset,
     title={Dataset for: Moving beyond simulation: data-driven quantitative photoacoustic imaging using tissue-mimicking phantoms},
     author={Gr{\"o}hl, Janek and Else, Thomas and Hacker, Lina and Bunce, Ellie and Sweeney, Paul and Bohndiek, Sarah},
-    year={2023}
+    year={2024}
     }
     '''     
     def __init__(self, data_path : str,
@@ -386,8 +386,10 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             return len(self.files)
         
     def __getitem__(self, idx : int) -> tuple:
-        # every other sample is the same as the previous one but flipped
-        np_data = np.load(self.files[idx // 2])
+        # during augmented training every other sample is the same as the
+        # previous one but flipped, and __len__ is doubled to match
+        file_idx = idx // 2 if (self.train and self.augment) else idx
+        np_data = np.load(self.files[file_idx])
         if self.experimental_data:
             signal = torch.from_numpy(np_data["features_das"].reshape(1, 288, 288)).float()
         else:
@@ -401,7 +403,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         inclusion_mask = torch.from_numpy(segmentation).int().unsqueeze(0) > 1
         absorption = torch.from_numpy(np_data["mua"].reshape(1, 288, 288)).float()
         fluence = torch.from_numpy(np_data["fluence"].reshape(1, 288, 288)).float()
-        wavelength_nm = int(self.files[idx // 2].split('_')[-1][:3])
+        wavelength_nm = int(self.files[file_idx].split('_')[-1][:3])
         wavelength_nm = torch.tensor([wavelength_nm], dtype=torch.int)
             
         if self.X_transform:
@@ -422,7 +424,7 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
             bg_mask = torch.fliplr(bg_mask)
             inclusion_mask = torch.fliplr(inclusion_mask)
         
-        return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask, self.files[idx // 2])
+        return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask, self.files[file_idx])
 
 
 class CombineMultipleDatasets(Dataset):

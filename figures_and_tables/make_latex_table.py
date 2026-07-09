@@ -1,11 +1,12 @@
 import os
-import json
 import numpy as np
+import pandas as pd
 from typing import Literal
 
 
 # display names for the table
 MODEL_DISPLAY = {
+    'UNet_e2eQPAT_original': 'UNet (e2eQPAT, original)',
     'UNet_e2eQPAT': 'UNet (e2eQPAT)',
     'EDM2': 'EDM2',
     'UNet_diffusion_ablation': 'UNet (ablation)',
@@ -24,6 +25,7 @@ def aggregate_folds(
     ) -> tuple[float, float]:
     """Aggregate a list of per-fold metric values into (centre, spread)."""
     arr = np.asarray([v for v in values if v is not None], dtype=float)
+    arr = arr[~np.isnan(arr)]
     if arr.size == 0:
         return float('nan'), float('nan')
     if agg == 'mean_std':
@@ -36,7 +38,7 @@ def aggregate_folds(
 
 
 def build_models_dict(
-    metrics_json: dict,
+    metrics_df: pd.DataFrame,
     experiment: str,
     mask: str,
     models: list,
@@ -46,9 +48,12 @@ def build_models_dict(
     """Return {model: {metric: (centre, spread)}} for one experiment/mask."""
     models_dict = {}
     for model in models:
+        rows = metrics_df[
+            (metrics_df['experiment'] == experiment) & (metrics_df['model'] == model)
+        ]
         models_dict[model] = {}
         for metric in metrics:
-            values = metrics_json[experiment][model][metric][mask]
+            values = rows[f'{mask}_{metric}'].tolist()
             models_dict[model][metric] = aggregate_folds(values, agg)
     return models_dict
 
@@ -123,7 +128,7 @@ def print_double_tex_reslts_table(
     metric_headers = _metric_headers(metrics)
     col_spec = 'l|' + 'c' * n + '|' + 'c' * n
     lines = [
-        r'\begin{table*}',
+        r'\begin{table}[H]',
         r'    \centering',
         f'    \\caption{{{caption}}}',
         f'    \\label{{{label}}}',
@@ -144,7 +149,7 @@ def print_double_tex_reslts_table(
         lines.append(r'    \hline')
     lines += [
         r'    \end{tabular}}',
-        r'\end{table*}',
+        r'\end{table}',
     ]
     print('\n'.join(lines))
 
@@ -163,7 +168,7 @@ def print_blocked_tex_reslts_table(
     metric_headers = _metric_headers(metrics)
     col_spec = 'l|' + 'c' * n + '|' + 'c' * n
     lines = [
-        r'\begin{table*}',
+        r'\begin{table}[H]',
         r'    \centering',
         f'    \\caption{{{caption}}}',
         f'    \\label{{{label}}}',
@@ -187,7 +192,7 @@ def print_blocked_tex_reslts_table(
             lines.append(r'    \hline')
     lines += [
         r'    \end{tabular}}',
-        r'\end{table*}',
+        r'\end{table}',
     ]
     print('\n'.join(lines))
 
@@ -208,45 +213,56 @@ if __name__ == "__main__":
     AGG = 'median_iqr'
     #AGG = 'mean_std'
 
-    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wandb_metrics.json')
-    with open(json_path, 'r') as f:
-        metrics_json = json.load(f)
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wandb_metrics.csv')
+    metrics_df = pd.read_csv(csv_path)
 
     # ---------------- Table 1: ImageNet_pretrain, 'bg' only ----------------
-    imagenet_bg = build_models_dict(metrics_json, 'ImageNet_pretrain', 'bg', MODELS, METRICS, AGG)
+    imagenet_bg = build_models_dict(metrics_df, 'ImageNet_pretrain', 'bg', MODELS, METRICS, AGG)
+    if AGG == 'mean_std':
+        caption = 'Results on the synthetic ImageNet test set. Values are mean $\pm$ std of 5 folds.'
+    else:
+        caption = 'Results on the synthetic ImageNet test set. Values are median $\pm$ IQR of 5 folds.'
     print_single_tex_reslts_table(
         imagenet_bg,
-        header='ImageNet pretrain (background)',
+        header='ImageNet pretrain',
         metrics=METRICS,
-        caption='Results on the synthetic ImageNet test set.',
+        caption=caption,
         label='tab:imagenet_pretrain',
     )
 
     # -------- Table 2: Digimouse_test | Digimouse_extrusion_test, 'bg' --------
-    # digimouse_bg = build_models_dict(metrics_json, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
-    # digimouse_extrusion_bg = build_models_dict(metrics_json, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
+    # digimouse_bg = build_models_dict(metrics_df, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
+    # digimouse_extrusion_bg = build_models_dict(metrics_df, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
+    # if AGG == 'mean_std':
+    #     caption = 'Results on the Digimouse test sets. Values are mean $\pm$ std of 5 folds.'
+    # else:
+    #     caption = 'Results on the Digimouse test sets. Values are median $\pm$ IQR of 5 folds.'
     # print_double_tex_reslts_table(
     #     digimouse_bg, 'Digimouse',
     #     digimouse_extrusion_bg, 'Digimouse (extrusion)',
     #     metrics=METRICS,
-    #     caption='Out-of-distribution results on the Digimouse test sets (background).',
+    #     caption=caption,
     #     label='tab:digimouse',
     # )
 
     # ---- Table 3: experimental_from_scratch + _fine_tune, bg | inclusion ----
     blocks = []
-    for experiment, block_name in [
-        ('experimental_from_scratch', 'From scratch'),
-        ('experimental_fine_tune', 'Fine-tuned'),
+    for experiment, block_name, block_models in [
+        ('experimental_from_scratch', 'From scratch', ['UNet_e2eQPAT_original'] + MODELS),
+        ('experimental_fine_tune', 'Fine-tuned', MODELS),
     ]:
-        bg = build_models_dict(metrics_json, experiment, 'bg', MODELS, METRICS, AGG)
-        inclusion = build_models_dict(metrics_json, experiment, 'inclusion', MODELS, METRICS, AGG)
+        bg = build_models_dict(metrics_df, experiment, 'bg', block_models, METRICS, AGG)
+        inclusion = build_models_dict(metrics_df, experiment, 'inclusion', block_models, METRICS, AGG)
         blocks.append((block_name, bg, inclusion))
+    if AGG == 'mean_std':
+        caption = 'Results on the experimental phantom test set. Values are mean $\pm$ std of 5 folds.'
+    else:
+        caption = 'Results on the experimental phantom test set. Values are median $\pm$ IQR of 5 folds.'
     print_blocked_tex_reslts_table(
         blocks,
         header_left='Background',
         header_right='Inclusion',
         metrics=METRICS,
-        caption='Results on the experimental phantom test set.',
+        caption=caption,
         label='tab:experimental',
     )

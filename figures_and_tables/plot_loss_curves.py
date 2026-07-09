@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Literal
-
+from itertools import product
 
 # number of training epochs per model, used to scale the x-axis into epochs
 EPOCHS = {
@@ -32,6 +32,8 @@ def plot_loss_curves(
     experiments: list,
     labels: list,
     savename: str,
+    metric1_key: list[str] = ['train_loss'],
+    metric2_key: list[str] = ['val_loss'],
     std_or_iqr: Literal['std', 'iqr'] = 'std',
     linthresh: None | float = None,
     ) -> None:
@@ -41,7 +43,7 @@ def plot_loss_curves(
         ax.set_yscale('symlog', linthresh=linthresh)
     else:
         ax.set_yscale('log')
-    ylabel = r'Denoising loss (a.u.)' if model == 'EDM2' else r'Mean squared error (a.u.)'
+    ylabel = r'Mean squared error (a.u.)'
     ax.set_ylabel(ylabel)
     ax.set_xlabel('Epochs')
 
@@ -54,32 +56,36 @@ def plot_loss_curves(
             print(f"No loss curves for {experiment}/{model}, skipping")
             continue
 
-        train_loss = _stack_folds(model_curves['train_loss'])
-        val_loss = _stack_folds(model_curves['val_loss'])
+        metric1 = _stack_folds(model_curves[metric1_key])
+        if metric2_key is not None:
+            metric2 = _stack_folds(model_curves[metric2_key])
+        else:
+            metric2 = np.full((metric1.shape[0], 1), np.nan, dtype=np.float32)
 
-        # train/val are logged at uniform intervals, so map each onto [0, epochs]
-        train_x = np.linspace(0, epochs, train_loss.shape[1])
-        val_x = np.linspace(0, epochs, val_loss.shape[1])
+        # metrics are logged at uniform intervals, so map each onto [0, epochs]
+        metric1_x = np.linspace(0, epochs, metric1.shape[1])
+        metric2_x = np.linspace(0, epochs, metric2.shape[1])
 
         if std_or_iqr == 'std':
-            train_centre = np.nanmean(train_loss, axis=0)
-            val_centre = np.nanmean(val_loss, axis=0)
-            train_lo = train_centre - np.nanstd(train_loss, axis=0)
-            train_hi = train_centre + np.nanstd(train_loss, axis=0)
-            val_lo = val_centre - np.nanstd(val_loss, axis=0)
-            val_hi = val_centre + np.nanstd(val_loss, axis=0)
+            metric1_centre = np.nanmean(metric1, axis=0)
+            metric2_centre = np.nanmean(metric2, axis=0) if metric2_key is not None else None
+            metric1_lo = metric1_centre - np.nanstd(metric1, axis=0)
+            metric1_hi = metric1_centre + np.nanstd(metric1, axis=0)
+            metric2_lo = metric2_centre - np.nanstd(metric2, axis=0) if metric2_key is not None else None
+            metric2_hi = metric2_centre + np.nanstd(metric2, axis=0) if metric2_key is not None else None
         elif std_or_iqr == 'iqr':
-            train_centre = np.nanmedian(train_loss, axis=0)
-            val_centre = np.nanmedian(val_loss, axis=0)
-            train_lo = np.nanpercentile(train_loss, 25, axis=0)
-            train_hi = np.nanpercentile(train_loss, 75, axis=0)
-            val_lo = np.nanpercentile(val_loss, 25, axis=0)
-            val_hi = np.nanpercentile(val_loss, 75, axis=0)
+            metric1_centre = np.nanmedian(metric1, axis=0)
+            metric2_centre = np.nanmedian(metric2, axis=0) if metric2_key is not None else None
+            metric1_lo = np.nanpercentile(metric1, 25, axis=0)
+            metric1_hi = np.nanpercentile(metric1, 75, axis=0)
+            metric2_lo = np.nanpercentile(metric2, 25, axis=0) if metric2_key is not None else None
+            metric2_hi = np.nanpercentile(metric2, 75, axis=0) if metric2_key is not None else None
 
-        ax.plot(train_x, train_centre, color=colors[i], linestyle='-', label=f'{labels[i]} train loss')
-        ax.plot(val_x, val_centre, color=colors[i], linestyle='--', label=f'{labels[i]} validation loss')
-        ax.fill_between(train_x, train_lo, train_hi, color=colors[i], alpha=0.2)
-        ax.fill_between(val_x, val_lo, val_hi, color=colors[i], alpha=0.2)
+        ax.plot(metric1_x, metric1_centre, color=colors[i], linestyle='-', label=f'{labels[i]} {metric1_key}')
+        ax.fill_between(metric1_x, metric1_lo, metric1_hi, color=colors[i], alpha=0.2)
+        if metric2_key is not None:
+            ax.plot(metric2_x, metric2_centre, color=colors[i], linestyle='--', label=f'{labels[i]} {metric2_key}')
+            ax.fill_between(metric2_x, metric2_lo, metric2_hi, color=colors[i], alpha=0.2)
 
     ax.legend(loc='upper right')
     ax.set_xlim(0, epochs)
@@ -92,16 +98,33 @@ def plot_loss_curves(
 if __name__ == "__main__":
     # choose the model and compare it across the two experiments
     MODELS = ['UNet_e2eQPAT', 'EDM2']
-    LINTHRESH = {'UNet_e2eQPAT': None, 'EDM2': 1e-3}
+    LINTHRESH = {'UNet_e2eQPAT': None, 'EDM2': None}
     EXPERIMENTS = ['experimental_from_scratch', 'experimental_fine_tune']
     LABELS = ['not pretrained', 'pretrained']
+    METIC_KEYS = [
+        ['train_loss', 'val_loss'], 
+        ['inclusion_val_RMSE', None],
+        ['inclusion_val_MAE', None],
+        ['inclusion_val_Rel_Err', None],
+        ['bg_val_RMSE', None],
+        ['bg_val_MAE', None],
+        ['bg_val_Rel_Err', None],
+    ]
 
     json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wandb_loss_curves.json')
     with open(json_path, 'r') as f:
         loss_curves = json.load(f)
 
-    for MODEL in MODELS:
-        savename = f'loss_curves_{MODEL}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
+    for model, metric_keys in product(MODELS, METIC_KEYS):
+        savename = f'loss_curves_{model}_{metric_keys[0]}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
         plot_loss_curves(
-            loss_curves, MODEL, EXPERIMENTS, LABELS, savename, std_or_iqr='iqr', linthresh=LINTHRESH[MODEL] 
+            loss_curves=loss_curves, 
+            model=model, 
+            experiments=EXPERIMENTS, 
+            labels=LABELS, 
+            savename=savename, 
+            metric1_key=metric_keys[0],
+            metric2_key=metric_keys[1],
+            std_or_iqr='iqr', 
+            linthresh=LINTHRESH[model],            
         )
