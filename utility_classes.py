@@ -418,11 +418,11 @@ class e2eQPATReconstructAbsorbtionDataset(ReconstructAbsorbtionDataset):
         
         # every other sample is the same as the previous one but flipped
         if self.train and self.augment and (idx % 2 == 1):
-            signal = torch.fliplr(signal)
-            absorption = torch.fliplr(absorption)
-            fluence = torch.fliplr(fluence)
-            bg_mask = torch.fliplr(bg_mask)
-            inclusion_mask = torch.fliplr(inclusion_mask)
+            signal = torch.flip(signal, dims=[-1])
+            absorption = torch.flip(absorption, dims=[-1])
+            fluence = torch.flip(fluence, dims=[-1])
+            bg_mask = torch.flip(bg_mask, dims=[-1])
+            inclusion_mask = torch.flip(inclusion_mask, dims=[-1])
         
         return (signal, absorption, fluence, wavelength_nm, bg_mask, inclusion_mask, self.files[file_idx])
 

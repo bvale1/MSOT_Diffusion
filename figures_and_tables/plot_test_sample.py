@@ -39,6 +39,16 @@ experiments = [
     "ImageNet_pretrain",
 ]
 # experiments = [
+#     "Digimouse_test",
+# ]
+# experiments = [
+#     "Digimouse_extrusion_test",
+# ]
+# experiments = [
+#     "experimental_from_scratch",
+#     "experimental_fine_tune",
+# ]
+# experiments = [
 #     "experimental_from_scratch",
 #     "experimental_fine_tune",
 # ]
@@ -56,6 +66,9 @@ DATASETS = {
 
 # ImageNet synthetic
 sample_name = '__mnt__fast__datasets__still__ImageNet__ILSVRC2012__TrainingSet__n02101006__n02101006_993.JPEG'
+# Digimouse synthetic (slice_wavelength); same slice/wavelength used for the 3D
+# and extrusion figures so the out-of-plane artefacts can be compared directly
+#sample_name = "450_800"
 # exprimental
 #sample_name = "P.2.1_700"
 
@@ -205,12 +218,18 @@ for model_name, experiment in combos:
     mu_a_hat = Y_hat[:, 0:1].detach().cpu()
 
     mu_a_hat = transforms_dict['normalise_mu_a'].inverse(mu_a_hat).squeeze().numpy()
-    mu_a_hat += 1e-2 # convert mu_a from m^-1 to cm^-1
+    if args.synthetic_or_experimental == 'experimental':
+        mu_a_hat += 1e-2 # experimental mu_a is already in cm^-1
+    else:
+        mu_a_hat *= 1e-2 # synthetic mu_a is stored in m^-1, convert to cm^-1
     outputs[(model_name, experiment)] = mu_a_hat
     if X_plot is None:
         X_plot = transforms_dict['normalise_x'].inverse(X.detach().cpu()).squeeze().numpy()
         mu_a_plot = transforms_dict['normalise_mu_a'].inverse(mu_a).squeeze().numpy()
-        mu_a_plot += 1e-2 # convert mu_a from m^-1 to cm^-1
+        if args.synthetic_or_experimental == 'experimental':
+            mu_a_plot += 1e-2 # experimental mu_a is already in cm^-1
+        else:
+            mu_a_plot *= 1e-2 # synthetic mu_a is stored in m^-1, convert to cm^-1
         dx = examples_dataset.cfg['dx'] * 1e3 # [m] -> [mm]
 
     del model

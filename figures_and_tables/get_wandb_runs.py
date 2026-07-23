@@ -107,11 +107,24 @@ for run in runs:
     else:
         raise ValueError(f"Unexpected notes format: {notes}")
     
-    if model == "UNet_e2eQPAT" and run.config["no_lr_scheduler"] == True:
-        print(f"Skipping run {notes} due to no_lr_scheduler==True")
-        continue
-    elif model == "UNet_e2eQPAT":
-        print(f"detected run {notes} with no_lr_scheduler={run.config['no_lr_scheduler']}")
+    # manual filters
+    
+    if experiment in ['experimental_from_scratch', 'experimental_fine_tune']:
+        # UNet_e2eQPAT
+        if (model == "UNet_e2eQPAT"):
+            if (run.config["no_lr_scheduler"] == True) or (run.config["lr"] != 1e-4):
+                print(f"Skipping run {notes} due to no_lr_scheduler==True")
+                continue
+            else:
+                print(f"detected run {notes} with no_lr_scheduler={run.config['no_lr_scheduler']}, lr={run.config['lr']}")
+        
+        # EDM2
+        if (model == "EDM2"):
+            if (run.config["lr"] != 1e-3):
+                print(f"Skipping run {notes} due to lr={run.config['lr']}")
+                continue
+            else:
+                print(f"detected run {notes} with lr={run.config['lr']}")
     
     if fold not in FOLDS:
         print(f"Skipping fold {notes} not in FOLDS list")
@@ -154,6 +167,6 @@ metric_columns = ['experiment', 'model', 'fold'] + [
 ]
 metrics_df = pd.DataFrame(metric_rows, columns=metric_columns)
 metrics_df = metrics_df.sort_values(['experiment', 'model', 'fold'])
-metrics_df.to_csv('wandb_metrics.csv', index=False)
+#metrics_df.to_csv('wandb_metrics.csv', index=False)
 with open('wandb_loss_curves.json', 'w') as f:
     json.dump(loss_curves_dict, f, indent=4)

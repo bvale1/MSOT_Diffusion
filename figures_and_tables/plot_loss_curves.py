@@ -101,8 +101,14 @@ if __name__ == "__main__":
     LINTHRESH = {'UNet_e2eQPAT': None, 'EDM2': None}
     EXPERIMENTS = ['experimental_from_scratch', 'experimental_fine_tune']
     LABELS = ['not pretrained', 'pretrained']
+    # primary loss curve figure per model. EDM2 is trained with the EDM2 denoising
+    # objective, whose loss can be negative and is not the same quantity as the MSE
+    # validation loss, so only its validation loss is plotted (no train_loss).
+    MAIN_METRIC_KEYS = {
+        'UNet_e2eQPAT': ['train_loss', 'val_loss'],
+        'EDM2': ['val_loss', None],
+    }
     METIC_KEYS = [
-        ['train_loss', 'val_loss'], 
         ['inclusion_val_RMSE', None],
         ['inclusion_val_MAE', None],
         ['inclusion_val_Rel_Err', None],
@@ -115,16 +121,31 @@ if __name__ == "__main__":
     with open(json_path, 'r') as f:
         loss_curves = json.load(f)
 
+    for model in MODELS:
+        metric_keys = MAIN_METRIC_KEYS[model]
+        savename = f'loss_curves_{model}_{metric_keys[0]}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
+        plot_loss_curves(
+            loss_curves=loss_curves,
+            model=model,
+            experiments=EXPERIMENTS,
+            labels=LABELS,
+            savename=savename,
+            metric1_key=metric_keys[0],
+            metric2_key=metric_keys[1],
+            std_or_iqr='iqr',
+            linthresh=LINTHRESH[model],
+        )
+
     for model, metric_keys in product(MODELS, METIC_KEYS):
         savename = f'loss_curves_{model}_{metric_keys[0]}_{EXPERIMENTS[0]}_vs_{EXPERIMENTS[1]}.pdf'
         plot_loss_curves(
-            loss_curves=loss_curves, 
-            model=model, 
-            experiments=EXPERIMENTS, 
-            labels=LABELS, 
-            savename=savename, 
+            loss_curves=loss_curves,
+            model=model,
+            experiments=EXPERIMENTS,
+            labels=LABELS,
+            savename=savename,
             metric1_key=metric_keys[0],
             metric2_key=metric_keys[1],
-            std_or_iqr='iqr', 
-            linthresh=LINTHRESH[model],            
+            std_or_iqr='iqr',
+            linthresh=LINTHRESH[model],
         )

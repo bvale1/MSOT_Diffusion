@@ -31,9 +31,19 @@ MASK_TYPES = [
 ]
 
 MODEL_DISPLAY = {
-    'UNet_e2eQPAT': 'UNet (e2eQPAT)',
+    'UNet_e2eQPAT': 'U-Net (e2eQPAT)',
     'EDM2': 'EDM2',
-    'UNet_diffusion_ablation': 'UNet (ablation)',
+    'UNet_diffusion_ablation': 'U-Net (ablation)',
+}
+
+# the original e2eQPAT reference weights are drawn as an extra green box on the
+# left of the U-Net (e2eQPAT) group (they only exist for the from-scratch case)
+ORIGINAL_MODEL = 'UNet_e2eQPAT_original'
+ORIGINAL_EXPERIMENT = 'experimental_from_scratch'
+COLOR_ORIGINAL = 'tab:green'
+EXPERIMENT_COLORS = {
+    'experimental_from_scratch': 'tab:blue',
+    'experimental_fine_tune': 'tab:orange',
 }
 EXPERIMENT_DISPLAY = {
     'experimental_from_scratch': 'From scratch',
@@ -63,60 +73,71 @@ def make_box_plots(
         ['experiment', 'model', 'sample_name']
     )[value_cols].agg(agg).reset_index()
 
+    def get_values(model, experiment, mask):
+        values = agg_df[
+            (agg_df['experiment'] == experiment) & (agg_df['model'] == model)
+        ][f'{mask}_{metric}'].to_numpy(dtype=float)
+        return values[np.isfinite(values)]
+
     text_scale = 1.6
     label_fontsize = 10 * text_scale
     tick_fontsize = 8 * text_scale
     legend_fontsize = 10 * text_scale
 
     fig, ax = plt.subplots(2, 1, figsize=(14, 8), layout='constrained', sharex=True)
-    colors = ['tab:blue', 'tab:orange']
 
-    # one group per model, from-scratch and fine-tuned boxes side by side
-    # within each group, with a small gap between the groups
+    # one group per model; boxes within a group share a fixed pitch so they line
+    # up across groups even when a group has a different number of boxes (the
+    # U-Net (e2eQPAT) group additionally holds the original reference weights)
     group_spacing = 1.0
     x_positions = np.arange(len(MODELS), dtype=float) * group_spacing
-    offsets = np.linspace(-0.2, 0.2, len(EXPERIMENTS))
-    box_width = 0.32
-    jitter_width = 0.08
+    box_pitch = 0.26
+    box_width = 0.22
+    jitter_width = 0.06
     rng = np.random.default_rng(42)
 
     for row, mask in enumerate(MASK_TYPES):
-        for i, experiment in enumerate(EXPERIMENTS):
-            data = []
-            positions = []
-            for j, model in enumerate(MODELS):
-                values = agg_df[
-                    (agg_df['experiment'] == experiment) & (agg_df['model'] == model)
-                ][f'{mask}_{metric}'].to_numpy(dtype=float)
-                values = values[np.isfinite(values)]
+        for j, model in enumerate(MODELS):
+            # (values, colour) for each box in this group, ordered left to right
+            group_series = []
+            if model == 'UNet_e2eQPAT':
+                orig_values = get_values(ORIGINAL_MODEL, ORIGINAL_EXPERIMENT, mask)
+                if orig_values.size > 0:
+                    group_series.append((orig_values, COLOR_ORIGINAL))
+            for experiment in EXPERIMENTS:
+                values = get_values(model, experiment, mask)
                 if values.size > 0:
-                    data.append(values)
-                    positions.append(x_positions[j] + offsets[i])
-            if not data:
+                    group_series.append((values, EXPERIMENT_COLORS[experiment]))
+            if not group_series:
                 continue
 
-            # hide the fliers, all points are scattered on top instead
-            bp = ax[row].boxplot(
-                data,
-                positions=positions,
-                widths=box_width,
-                patch_artist=True,
-                showfliers=False,
-                medianprops={'color': 'black', 'linewidth': 1.3},
-                whiskerprops={'color': 'black', 'linewidth': 1.0},
-                capprops={'color': 'black', 'linewidth': 1.0},
-                boxprops={'edgecolor': 'black', 'linewidth': 1.0},
-            )
-            for box in bp['boxes']:
-                box.set_facecolor(colors[i])
-                box.set_alpha(0.45)
-            for x_pos, values in zip(positions, data):
-                x_jitter = x_pos + rng.uniform(-jitter_width, jitter_width, size=values.shape[0])
+            k = len(group_series)
+            group_offsets = (np.arange(k) - (k - 1) / 2) * box_pitch
+            for (values, color), offset in zip(group_series, group_offsets):
+                position = x_positions[j] + offset
+                # hide the fliers, all points are scattered on top instead
+                bp = ax[row].boxplot(
+                    [values],
+                    positions=[position],
+                    widths=box_width,
+                    patch_artist=True,
+                    showfliers=False,
+                    medianprops={'color': 'black', 'linewidth': 1.3},
+                    whiskerprops={'color': 'black', 'linewidth': 1.0},
+                    capprops={'color': 'black', 'linewidth': 1.0},
+                    boxprops={'edgecolor': 'black', 'linewidth': 1.0},
+                )
+                for box in bp['boxes']:
+                    box.set_facecolor(color)
+                    box.set_alpha(0.45)
+                x_jitter = position + rng.uniform(
+                    -jitter_width, jitter_width, size=values.shape[0]
+                )
                 ax[row].scatter(
                     x_jitter,
                     values,
                     s=9,
-                    color=colors[i],
+                    color=color,
                     alpha=0.6,
                     edgecolors='none',
                     zorder=3,
@@ -135,12 +156,15 @@ def make_box_plots(
     )
 
     legend_handles = [
-        Patch(facecolor=colors[i], edgecolor='black', label=EXPERIMENT_DISPLAY[experiment])
-        for i, experiment in enumerate(EXPERIMENTS)
+        Patch(facecolor=COLOR_ORIGINAL, edgecolor='black', label='Original')
+    ] + [
+        Patch(facecolor=EXPERIMENT_COLORS[experiment], edgecolor='black',
+              label=EXPERIMENT_DISPLAY[experiment])
+        for experiment in EXPERIMENTS
     ]
     ax[0].legend(
         handles=legend_handles,
-        ncol=len(EXPERIMENTS),
+        ncol=len(legend_handles),
         loc='lower center',
         bbox_to_anchor=(0.5, 1.0),
         fontsize=legend_fontsize,

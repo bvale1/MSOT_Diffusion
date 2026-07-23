@@ -90,7 +90,7 @@ def print_single_tex_reslts_table(
     models = list(models_dict.keys())
     col_spec = 'l|' + 'c' * n
     lines = [
-        r'\begin{table}',
+        r'\begin{table}[H]',
         r'    \centering',
         f'    \\caption{{{caption}}}',
         f'    \\label{{{label}}}',
@@ -231,19 +231,19 @@ if __name__ == "__main__":
     )
 
     # -------- Table 2: Digimouse_test | Digimouse_extrusion_test, 'bg' --------
-    # digimouse_bg = build_models_dict(metrics_df, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
-    # digimouse_extrusion_bg = build_models_dict(metrics_df, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
-    # if AGG == 'mean_std':
-    #     caption = 'Results on the Digimouse test sets. Values are mean $\pm$ std of 5 folds.'
-    # else:
-    #     caption = 'Results on the Digimouse test sets. Values are median $\pm$ IQR of 5 folds.'
-    # print_double_tex_reslts_table(
-    #     digimouse_bg, 'Digimouse',
-    #     digimouse_extrusion_bg, 'Digimouse (extrusion)',
-    #     metrics=METRICS,
-    #     caption=caption,
-    #     label='tab:digimouse',
-    # )
+    digimouse_bg = build_models_dict(metrics_df, 'Digimouse_test', 'bg', MODELS, METRICS, AGG)
+    digimouse_extrusion_bg = build_models_dict(metrics_df, 'Digimouse_extrusion_test', 'bg', MODELS, METRICS, AGG)
+    if AGG == 'mean_std':
+        caption = 'Results on the Digimouse test sets. Values are mean $\pm$ std of 5 folds.'
+    else:
+        caption = 'Results on the Digimouse test sets. Values are median $\pm$ IQR of 5 folds.'
+    print_double_tex_reslts_table(
+        digimouse_bg, 'Digimouse',
+        digimouse_extrusion_bg, 'Digimouse (extrusion)',
+        metrics=METRICS,
+        caption=caption,
+        label='tab:digimouse',
+    )
 
     # ---- Table 3: experimental_from_scratch + _fine_tune, bg | inclusion ----
     blocks = []

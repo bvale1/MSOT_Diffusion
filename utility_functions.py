@@ -242,28 +242,37 @@ def create_synthetic_dataloaders(args : argparse.Namespace,
     
     with open(os.path.join(args.synthetic_root_dir, 'config.json'), 'r') as f:
         config = json.load(f) # <- dataset config contains normalisation parameters
-    
-    transforms_dict = define_transforms(args, config, int(args.fold))
-    
+
+    # the digimouse datasets are single-fold test sets (only fold 0 exists), but are
+    # evaluated by every cross-validation fold's model, so pin them to fold 0. Other
+    # datasets keep args.fold so a missing fold surfaces as an error rather than
+    # silently falling back to fold 0.
+    if 'digimouse' in config.get('dataset_name', '').lower():
+        fold = 0
+    else:
+        fold = int(args.fold)
+
+    transforms_dict = define_transforms(args, config, fold)
+
     datasets = {
         'train' : SyntheticReconstructAbsorbtionDataset(
-            args.synthetic_root_dir, split='train', data_space='image', fold=args.fold,
-            X_transform=transforms_dict['x_transform'], 
-            Y_transform=transforms_dict['mu_a_transform'], 
+            args.synthetic_root_dir, split='train', data_space='image', fold=fold,
+            X_transform=transforms_dict['x_transform'],
+            Y_transform=transforms_dict['mu_a_transform'],
             fluence_transform=transforms_dict['fluence_transform'],
             mask_transform=transforms_dict['mask_transform']
         ),
         'val' : SyntheticReconstructAbsorbtionDataset(
-            args.synthetic_root_dir, split='val', data_space='image', fold=args.fold,
-            X_transform=transforms_dict['x_transform'], 
-            Y_transform=transforms_dict['mu_a_transform'], 
+            args.synthetic_root_dir, split='val', data_space='image', fold=fold,
+            X_transform=transforms_dict['x_transform'],
+            Y_transform=transforms_dict['mu_a_transform'],
             fluence_transform=transforms_dict['fluence_transform'],
             mask_transform=transforms_dict['mask_transform']
         ),
         'test' : SyntheticReconstructAbsorbtionDataset(
-            args.synthetic_root_dir, split='test', data_space='image', fold=args.fold,
-            X_transform=transforms_dict['x_transform'], 
-            Y_transform=transforms_dict['mu_a_transform'], 
+            args.synthetic_root_dir, split='test', data_space='image', fold=fold,
+            X_transform=transforms_dict['x_transform'],
+            Y_transform=transforms_dict['mu_a_transform'],
             fluence_transform=transforms_dict['fluence_transform'],
             mask_transform=transforms_dict['mask_transform']
         ),
@@ -326,15 +335,15 @@ def create_e2eQPAT_dataloaders(args : argparse.Namespace,
             os.path.join(args.experimental_root_dir, 'test'),
             stats=stats, fold=int(args.fold), train=False, augment=False,
             use_all_data=True, experimental_data=True, shuffle=False,
-            X_transform=transforms_dict['x_transform'], 
-            Y_transform=transforms_dict['mu_a_transform'], 
+            X_transform=transforms_dict['x_transform'],
+            Y_transform=transforms_dict['mu_a_transform'],
             fluence_transform=transforms_dict['fluence_transform'],
             mask_transform=transforms_dict['mask_transform']
         ),
     }
     dataloaders = {
         'train' : DataLoader(
-            datasets['train'], batch_size=args.train_batch_size, shuffle=False, num_workers=4
+            datasets['train'], batch_size=args.train_batch_size, shuffle=True, num_workers=4
         ),
         # backpropagation not performed on the validation set so batch size can be larger
         'val' : DataLoader( 

@@ -15,19 +15,28 @@ from edm2.generate_images import edm_sampler
 import end_to_end_phantom_QPAT.utils.networks as e2eQPAT_networks
 import utility_classes as uc
 import utility_functions as uf
+from epoch_steps import reconstruct_edm2_phema_from_dir
 from experiments.weights_paths import (
     original_weights_e2eQPAT, from_scratch_e2eQPAT, checkpoint_dirs
 )
 
-models = [
-    'UNet_e2eQPAT',
-    'EDM2',
-    'UNet_diffusion_ablation',
-]
+# models = [
+#     'UNet_e2eQPAT',
+#     'EDM2',
+#     'UNet_diffusion_ablation',
+# ]
+models = ['UNet_e2eQPAT']
 
+# experiments = [
+#     "ImageNet_pretrain",
+#     "Digimouse_test",
+#     "Digimouse_extrusion_test",
+#     "experimental_from_scratch",
+#     "experimental_fine_tune",
+# ]
 experiments = [
-    "experimental_from_scratch",
     "experimental_fine_tune",
+    "experimental_from_scratch",
 ]
 
 folds = [0, 1, 2, 3, 4]
@@ -43,6 +52,7 @@ MASK_TYPES = [
     'bg',
     'inclusion',
 ]
+# MASK_TYPES = ['bg']
 
 # how to aggregate the per-sample metrics over the test set into one row per fold
 # for wandb_metrics.csv: 'mean' or 'median'
@@ -146,9 +156,18 @@ for model_name, experiment, fold in product(models, experiments, folds):
             )
             if not args.attention:
                 uf.remove_attention(model.unet)
-    model.load_state_dict(
-        uf.load_best_checkpoint_from(checkpoint_dir), strict=False
-    )
+    if model_name in ['EDM2', 'UNet_diffusion_ablation']:
+        # the net tested in run_model.py is the phEMA reconstruction, so
+        # rebuild it from the latest snapshots rather than model_state_dict
+        latest_state = reconstruct_edm2_phema_from_dir(
+            checkpoint_dir, [args.phema_reconstruction_std], delete_pkls=False
+        )[0]['net'].state_dict()
+    else:
+        latest_state = torch.load(
+            os.path.join(checkpoint_dir, 'latest_checkpoint.pt'),
+            weights_only=True
+        )['model_state_dict']
+    model.load_state_dict(latest_state, strict=False)
     model.to(device)
     model.eval()
 
